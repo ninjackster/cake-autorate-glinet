@@ -30,6 +30,11 @@ current_wan_dev() {
 		  # the main table we would shape the tunnel and silently unshape the
 		  # physical uplink underneath it, which is the real bottleneck.
 		  if (d ~ /^(wg|tun|ovpn|tailscale|ipsec|gre|sit)/) next
+		  # Never shape a Qualcomm modem interface. rmnet devices sit on the
+		  # IPA hardware data path and use rmnet_sch; replacing the root qdisc
+		  # and adding an IFB ingress redirect on one takes the link down.
+		  # Shaping such a WAN needs a different approach (see README).
+		  if (d ~ /^(rmnet|wwan|usb|qmimux|ccmni)/) next
 		  if (best == "" || m+0 < bm+0) { best = d; bm = m }
 		}
 		END { print best }'
@@ -97,12 +102,14 @@ if [ "$dev" != "$prev" ]; then
 	if [ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ]; then
 		key="learned_$(printf '%s' "$dev" | tr -c 'A-Za-z0-9' '_')"
 		for d in dl ul; do
-			m="$(uci -q get ${CONF}.${key}_${d})"
-			[ -n "$m" ] || continue
+			# Stored value is the peak this device actually delivered.
+			p="$(uci -q get ${CONF}.${key}_${d})"
+			[ -n "$p" ] || continue
+			m=$(( p * 120 / 100 ))
 			uci -q set ${CONF}.${SECTION}.max_${d}_shaper_rate_kbps="$m"
 			uci -q set ${CONF}.${SECTION}.base_${d}_shaper_rate_kbps=$(( m * 85 / 100 ))
 			uci -q set ${CONF}.${SECTION}.min_${d}_shaper_rate_kbps=$(( m * 15 / 100 ))
-			log "restored learned ${d} bounds for ${dev}: max ${m}k"
+			log "restored ${d} bounds for ${dev} from observed peak ${p}k"
 		done
 	fi
 	uci -q commit ${CONF}

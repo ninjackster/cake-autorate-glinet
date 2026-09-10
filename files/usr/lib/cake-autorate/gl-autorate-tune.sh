@@ -50,6 +50,14 @@ for dir in dl ul; do
 	peak="$(peak_for "$iface")"
 	[ -n "$peak" ] || continue
 
+	# Remember what THIS device actually delivered. Recording the ceiling
+	# instead would stamp the previous uplink's number onto a new one: that
+	# is how a 60Mbit wifi ceiling ended up as the cellular "learned" value.
+	if [ "$(uci -q get ${CONF}.$(mem_key "$dev")_${dir})" != "$peak" ]; then
+		uci -q set ${CONF}.$(mem_key "$dev")_${dir}="$peak"
+		changed=1
+	fi
+
 	cur_max="$(uci -q get ${CONF}.${SEC}.max_${dir}_shaper_rate_kbps)"
 	[ -n "$cur_max" ] || continue
 
@@ -75,22 +83,9 @@ for dir in dl ul; do
 	uci -q set ${CONF}.${SEC}.max_${dir}_shaper_rate_kbps="$new_max"
 	uci -q set ${CONF}.${SEC}.base_${dir}_shaper_rate_kbps="$new_base"
 	uci -q set ${CONF}.${SEC}.min_${dir}_shaper_rate_kbps="$new_min"
-	uci -q set ${CONF}.$(mem_key "$dev")_${dir}="$new_max"
 	changed=1; bounds_changed=1
 	logger -t cake-autorate-tune \
 		"${dir} on ${dev}: peak ${peak}k, max ${cur_max}k -> ${new_max}k"
-done
-
-# Remember the current ceilings for this uplink even when nothing moved this
-# run. Only writing them on change would mean a link that converged long ago
-# is never recorded, and switching away and back would relearn from scratch.
-for dir in dl ul; do
-	cur="$(uci -q get ${CONF}.${SEC}.max_${dir}_shaper_rate_kbps)"
-	[ -n "$cur" ] || continue
-	if [ "$(uci -q get ${CONF}.$(mem_key "$dev")_${dir})" != "$cur" ]; then
-		uci -q set ${CONF}.$(mem_key "$dev")_${dir}="$cur"
-		changed=1
-	fi
 done
 
 if [ "$changed" = "1" ]; then

@@ -19,6 +19,11 @@ current_wan_dev() {
 		  }
 		  if (d == "") next
 		  if (d ~ /^(wg|tun|ovpn|tailscale|ipsec|gre|sit)/) next
+		  # Never shape a Qualcomm modem interface. rmnet devices sit on the
+		  # IPA hardware data path and use rmnet_sch; replacing the root qdisc
+		  # and adding an IFB ingress redirect on one takes the link down.
+		  # Shaping such a WAN needs a different approach (see README).
+		  if (d ~ /^(rmnet|wwan|usb|qmimux|ccmni)/) next
 		  if (best == "" || m+0 < bm+0) { best = d; bm = m }
 		}
 		END { print best }'
