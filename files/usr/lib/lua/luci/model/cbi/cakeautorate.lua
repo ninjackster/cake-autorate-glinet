@@ -35,7 +35,7 @@ o.rawhtml = true
 o.cfgvalue = function()
 	local dev = uci:get("cake-autorate", "wan", "ul_if") or "none"
 	local run = sys.call("/etc/init.d/cake-autorate running >/dev/null 2>&1") == 0
-	return string.format("<strong>%s</strong> &mdash; service %s", dev,
+	return string.format("<strong>%s</strong> &mdash; service %smiddot; service %s", dev,
 		run and "running" or "stopped")
 end
 
