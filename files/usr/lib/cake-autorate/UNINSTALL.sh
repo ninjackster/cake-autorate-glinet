@@ -4,6 +4,12 @@
 /etc/init.d/cake-autorate disable 2>/dev/null
 sed -i '/gl-wan-follow/d' /etc/crontabs/root 2>/dev/null && /etc/init.d/cron restart >/dev/null 2>&1
 rm -f /etc/hotplug.d/iface/99-cake-autorate
+# release the physical switch, but only if it is still pointed at us
+[ "$(uci -q get switch-button.@main[0].func)" = "autorate" ] && {
+	uci -q delete switch-button.@main[0].func
+	uci -q commit switch-button
+}
+rm -f /etc/gl-switch.d/autorate.sh
 rm -f /usr/lib/lua/luci/controller/cakeautorate.lua
 rm -f /usr/lib/lua/luci/model/cbi/cakeautorate.lua
 rm -f /usr/share/rpcd/acl.d/luci-app-cakeautorate.json

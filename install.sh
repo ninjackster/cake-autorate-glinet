@@ -57,11 +57,12 @@ for f in cake-autorate.sh defaults.sh lib.sh; do
 done
 
 # --- this repo's files -----------------------------------------------------
-mkdir -p /usr/lib/cake-autorate /etc/hotplug.d/iface \
+mkdir -p /usr/lib/cake-autorate /etc/hotplug.d/iface /etc/gl-switch.d \
          /usr/lib/lua/luci/controller /usr/lib/lua/luci/model/cbi /usr/share/rpcd/acl.d
 tar cf - -C "$SRC/files" . | tar xf - -C /
 chmod 755 /usr/lib/cake-autorate/*.sh /etc/init.d/cake-autorate \
           /etc/hotplug.d/iface/99-cake-autorate
+[ -f /etc/gl-switch.d/autorate.sh ] && chmod 755 /etc/gl-switch.d/autorate.sh
 chown -R root:root /usr/lib/cake-autorate /etc/init.d/cake-autorate \
           /etc/hotplug.d/iface/99-cake-autorate /usr/bin/bash5
 sed -i '1{/^#!/s|.*|#!/usr/bin/bash5|}' /usr/lib/cake-autorate/cake-autorate.sh \
@@ -103,13 +104,29 @@ grep -q gl-wan-follow /etc/crontabs/root 2>/dev/null || \
 # --- survive the next sysupgrade -------------------------------------------
 touch /etc/sysupgrade.conf
 for p in /usr/bin/bash5 /usr/lib/cake-autorate/ /etc/init.d/cake-autorate \
-         /etc/hotplug.d/iface/99-cake-autorate \
+         /etc/hotplug.d/iface/99-cake-autorate /etc/gl-switch.d/autorate.sh \
          /usr/lib/lua/luci/controller/cakeautorate.lua \
          /usr/lib/lua/luci/model/cbi/cakeautorate.lua \
          /usr/share/rpcd/acl.d/luci-app-cakeautorate.json; do
 	grep -qxF "$p" /etc/sysupgrade.conf || echo "$p" >> /etc/sysupgrade.conf
 done
 say "added to /etc/sysupgrade.conf (kept on 'keep settings' upgrades)"
+
+# --- physical switch (GL devices with one) ----------------------------------
+# Only claim the switch if it is unassigned. Overwriting an existing binding
+# would silently take away whatever the user had put there.
+if [ -f /etc/config/switch-button ] && [ -f /etc/gl-switch.d/autorate.sh ]; then
+	cur="$(uci -q get switch-button.@main[0].func)"
+	if [ -z "$cur" ]; then
+		uci -q set switch-button.@main[0].func=autorate
+		uci -q commit switch-button
+		say "switch bound to autorate (it was unassigned)"
+	elif [ "$cur" = "autorate" ]; then
+		say "switch already bound to autorate"
+	else
+		say "switch left alone (currently '$cur'); set func=autorate to use it"
+	fi
+fi
 
 # --- refresh LuCI ----------------------------------------------------------
 rm -f /tmp/luci-indexcache* 2>/dev/null || true

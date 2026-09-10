@@ -367,6 +367,45 @@ modem interface shares a single `learned_modem` memory key, since keying on the
 device name would split what it learned across two keys and lose it on every
 rename.
 
+## The physical switch
+
+GL devices with a side switch dispatch it through `/etc/rc.button/switch`, which
+ends in:
+
+```sh
+flock /var/lock/gl-switch.lock "/etc/gl-switch.d/$func.sh" $action &
+```
+
+where `$func` is `switch-button.@main[0].func` and `$action` is `on` or `off`.
+That is a clean extension point: drop in a handler and point the config at it.
+
+```sh
+uci set switch-button.@main[0].func=autorate
+uci commit switch-button
+```
+
+`install.sh` does this automatically, but only when the switch is unassigned.
+If you have already bound it to something, it says so and leaves it alone.
+
+On the screen, `rc.button/switch` calls `screen_disp_switch`, which maps known
+`func` values to a label and falls through to "Toggle Button" for anything else.
+The underlying call is undocumented but simple:
+
+```sh
+ubus call gl_screen set \
+  '{"method": "switch", "params": {"enable": true, "mode": "SQM Autorate", "sub_func": ""}}'
+```
+
+so the handler pushes its own label, and on enable replaces it with the uplink
+it actually landed on, which is the non-obvious part on a travel router.
+
+Note what this is NOT: there is no way to add a custom menu item or button to
+the touchscreen UI. `gl_screen` is closed source. GL.iNet have
+[said so directly](https://forum.gl-inet.com/t/mudi-7-gl-screen/68465): "we're
+not able to release the source code for the gl_screen module." The switch is
+the supported path, and `ubus call gl_screen set` is the only screen hook, found
+by reading GL's own `screen_disp_switch` rather than from any documentation.
+
 ## What it actually costs, measured
 
 Measured on a Mudi 7 at ~47 Mbps down / 46 up, from a LAN client so the traffic crossed the router's forwarding path.
