@@ -39,8 +39,32 @@ o.cfgvalue = function()
 		run and "running" or "stopped")
 end
 
+-- The live rate is the thing autorate actually moves. It is not stored in
+-- UCI (cake-autorate only ever issues "tc qdisc change"), so without this
+-- the page would show static config and give no sign the shaper is working.
+o = s:option(DummyValue, "_rates", translate("Live shaper rate"))
+o.rawhtml = true
+o.cfgvalue = function()
+	local dev = uci:get("cake-autorate", "wan", "ul_if") or ""
+	if not dev:match("^[%w%.%-_]+$") then
+		return "<em>not shaping</em>"
+	end
+	local ifb = ("ifb4" .. dev):sub(1, 15)
+	local function rate(d)
+		local r = sys.exec("tc qdisc show dev " .. d ..
+			" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1") or ""
+		r = r:gsub("bandwidth ", ""):gsub("%s+", "")
+		return (r ~= "" and r) or "-"
+	end
+	return string.format(
+		"down <strong>%s</strong> &middot; up <strong>%s</strong>" ..
+		"<br /><small>Adjusted continuously between the min and max below. " ..
+		"The fields on this page are the bounds, not the live value.</small>",
+		rate(ifb), rate(dev))
+end
+
 o = s:option(Value, "base_dl_shaper_rate_kbps", translate("Download base (kbit/s)"),
-	translate("Starting point. Set near your normal measured rate."))
+	translate("Where the shaper starts, and where it returns after an idle period. Set it near your normal measured rate."))
 o.datatype = "uinteger"
 
 o = s:option(Value, "min_dl_shaper_rate_kbps", translate("Download min (kbit/s)"))
