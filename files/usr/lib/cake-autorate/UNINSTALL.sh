@@ -4,6 +4,10 @@
 /etc/init.d/cake-autorate disable 2>/dev/null
 sed -i '/gl-wan-follow/d' /etc/crontabs/root 2>/dev/null && /etc/init.d/cron restart >/dev/null 2>&1
 rm -f /etc/hotplug.d/iface/99-cake-autorate
+rm -f /usr/lib/lua/luci/controller/cakeautorate.lua
+rm -f /usr/lib/lua/luci/model/cbi/cakeautorate.lua
+rm -f /usr/share/rpcd/acl.d/luci-app-cakeautorate.json
+rm -f /tmp/luci-indexcache*
 rm -f /etc/init.d/cake-autorate
 rm -f /etc/config/cake-autorate
 rm -rf /usr/lib/cake-autorate

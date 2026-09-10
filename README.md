@@ -296,9 +296,58 @@ uci commit sqm && /etc/init.d/sqm restart
 
 The follower derives `dl_if` as `ifb4<dev>` truncated to 15 characters, which is byte for byte what `ifb_name()` in `/usr/lib/sqm/functions.sh` does. Worth re-checking on your own device with `sed -n '/^ifb_name/,/^}/p' /usr/lib/sqm/functions.sh`, since a vendor could patch it. Note that sqm-scripts' own truncation makes `rmnet_data1` and `rmnet_data10` collide, which is not something this repo can fix.
 
-## No GUI
+## Turning it on, and a UI to do it with
 
-You get UCI and SSH, not the toggle from GL's 4.11 admin panel. Curiously, the Mudi 7 already ships every translation string for it in `/www/i18n/gl-sdk4-ui-flowstatistics.*.json`, including `cake_autorate_title` and the tooltip text, because GL builds i18n centrally across models. The Vue component that would use those strings is not in the device's `app.*.js.gz` bundle. Swapping in another model's admin bundle is not worth attempting, since it talks to a version-matched rpcd API and you would risk the entire admin panel to gain one toggle.
+`cake-autorate` only adjusts an existing cake qdisc, so enabling it is really two operations: provision an SQM queue on the live WAN, then start the service. `gl-autorate-ctl.sh` does both:
+
+```sh
+/usr/lib/cake-autorate/gl-autorate-ctl.sh on
+/usr/lib/cake-autorate/gl-autorate-ctl.sh off
+/usr/lib/cake-autorate/gl-autorate-ctl.sh status
+```
+
+`on` resolves the live WAN, writes `ul_if`/`dl_if`, creates the `sqm.autorate` queue seeded from your base rates, and starts everything. `off` tears all of it down, including the sqm restart that actually removes the qdisc.
+
+For a toggle rather than a shell, there is a LuCI page at **Network -> Cake Autorate**, which on GL firmware lives at `http://<router>:8080` alongside the stock admin panel on port 80. It exposes the enable switch, the WAN follower, the six rate fields and the idle threshold, shows which device is currently being shaped and whether the service is up, and calls `gl-autorate-ctl.sh` on save so the SQM side stays in step.
+
+This is a LuCI app, not a port of GL's own 4.11 switch. Their admin panel is a compiled Vue bundle that talks to a version-matched rpcd API; swapping another model's bundle in to gain one toggle is a bad trade. Curiously the strings are already on the device: a Mudi 7 on 4.10 ships `cake_autorate_title` and the rest in `/www/i18n/gl-sdk4-ui-flowstatistics.*.json` because GL builds i18n centrally across models. Only the component that would use them is missing.
+
+LuCI is already installed on GL 4.x firmware. Check before assuming:
+
+```sh
+opkg list-installed | grep -c '^luci'      # 24 on a Mudi 7 4.10.0
+ls /usr/lib/lua/luci/model/cbi             # luci-compat present means classic CBI works
+```
+
+## What it actually costs, measured
+
+Measured on a Mudi 7 at ~47 Mbps down / 46 up, from a LAN client so the traffic crossed the router's forwarding path.
+
+**Software flow offloading is not the problem it is said to be.** The common advice is that SQM and offloading are incompatible. On this platform that is false, and it is easy to check rather than believe. Download 50MB through the router and compare it against what cake counted:
+
+```
+offload ON    50,000,000 downloaded  ->  cake saw 53,097,541 bytes
+offload OFF   50,000,000 downloaded  ->  cake saw 61,308,887 bytes
+```
+
+Cake sees the traffic either way. The download path is captured by a `tc ingress` redirect that runs before netfilter, and the flowtable fast path still hands egress packets to the qdisc. The incompatibility applies to *hardware* offload, which on this device is unavailable anyway (`ethtool -k wlan4` reports `hw-tc-offload: off [fixed]`, likewise for the modem and the bridge). Check your own hardware before giving anything up.
+
+**VPNs cost you cake's flow isolation, not its shaping.** Everything inside a tunnel is one encrypted flow to one peer, so cake's per-flow fairness has nothing to separate. Four concurrent downloads, same load both times:
+
+| | direct | via VPN |
+|---|---|---|
+| sparse flows | 5 | 7 |
+| bulk flows | **4** | **1** |
+
+Shaping and the bufferbloat control still work, because total rate is still enforced. What is gone is cake's ability to stop one device or one bulk transfer from starving the others, since it can no longer tell them apart. This was measured through a Tailscale exit node and reproduced with a bonding VPN (`sp_flows 1, bk_flows 1`), and applies equally to any WireGuard tunnel.
+
+**Check where the queue actually is before you bother.** On a repeatered rental wifi link showing over a second of latency under load, shaping changed nothing, because the queue was not ours:
+
+```
+tc -s qdisc show dev <wan>   av_delay 243us   pk_delay 1.59ms   backlog 0b
+```
+
+Cake's own queue was empty while the link showed a second of delay. A shaper can only control a queue that forms in its own path, and as a wifi client on someone else's AP, it does not. That one command answers "is this queue mine?" and is worth running before changing anything.
 
 ## Things worth knowing before you commit
 
