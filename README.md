@@ -360,9 +360,12 @@ enough to make the measurements worthless. Test shaping changes on a link that
 is behaving.
 
 One wrinkle worth knowing: the modem renumbers itself between `rmnet_data0` and
-`rmnet_data1` with no change to the link. In bridge mode the shaped device is
-`br-lan` either way, so the follower records the new name and leaves the shaper
-alone rather than tearing it down.
+`rmnet_data1` with no change to the link. Two things follow from that. The
+follower records the new name and leaves the shaper alone rather than tearing it
+down, because in bridge mode the shaped device is `br-lan` either way. And every
+modem interface shares a single `learned_modem` memory key, since keying on the
+device name would split what it learned across two keys and lose it on every
+rename.
 
 ## What it actually costs, measured
 

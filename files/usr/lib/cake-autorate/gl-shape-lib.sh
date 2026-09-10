@@ -156,3 +156,16 @@ set_bounds() {
 	uci -q set ${CONF}.${SECTION}.base_${dir}_shaper_rate_kbps="$base"
 	uci -q set ${CONF}.${SECTION}.min_${dir}_shaper_rate_kbps="$mn"
 }
+
+# Memory key for an uplink. A modem renumbers itself between rmnet_data0 and
+# rmnet_data1 with no change to the physical link, which would otherwise split
+# what it has learned across two keys and lose it on every rename. Bridge mode
+# treats every modem identically, so they collapse to one key.
+mem_key() {
+	local d="$1"
+	if is_modem "$d"; then
+		printf 'learned_modem'
+		return 0
+	fi
+	printf 'learned_%s' "$(printf '%s' "$d" | tr -c 'A-Za-z0-9' '_')"
+}

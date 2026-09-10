@@ -27,7 +27,6 @@ wan="$(uci -q get ${CONF}.${SECTION}.active_wan)"
 LOG="/var/log/cake-autorate.${SECTION}.log"
 [ -f "$LOG" ] || exit 0
 
-mem_key() { printf 'learned_%s' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9' '_')"; }
 pct() { echo $(( $1 * $2 / 100 )); }
 
 peak_for() {

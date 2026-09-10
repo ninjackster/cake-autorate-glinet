@@ -66,7 +66,7 @@ if [ "$dev" != "$prev_wan" ] || [ "$CA_UL_IF" != "$prev_ul" ]; then
 	# Bounds measured on this uplink previously. Keyed on the uplink, not the
 	# shaped device, because capacity is a property of the link.
 	if [ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ]; then
-		key="learned_$(printf '%s' "$dev" | tr -c 'A-Za-z0-9' '_')"
+		key="$(mem_key "$dev")"
 		for d in dl ul; do
 			p="$(uci -q get ${CONF}.${key}_${d})"
 			[ -n "$p" ] || continue
