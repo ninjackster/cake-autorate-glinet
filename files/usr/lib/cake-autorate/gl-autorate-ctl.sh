@@ -36,6 +36,10 @@ on)
 	uci -q set ${CONF}.${SECTION}.dl_if="$(ifb_name "$dev")"
 	uci -q set ${CONF}.${SECTION}.enabled=1
 	uci -q set ${CONF}.${SECTION}.wan_follow=1
+	# The tuner derives the bounds from the rates actually applied, which are
+	# only written to the log when this is on.
+	[ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ] && \
+		uci -q set ${CONF}.${SECTION}.output_cake_changes=1
 	uci -q commit ${CONF}
 
 	uci -q set sqm.autorate=queue

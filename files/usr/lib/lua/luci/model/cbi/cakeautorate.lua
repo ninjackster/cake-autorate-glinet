@@ -42,6 +42,15 @@ end
 -- The live rate is the thing autorate actually moves. It is not stored in
 -- UCI (cake-autorate only ever issues "tc qdisc change"), so without this
 -- the page would show static config and give no sign the shaper is working.
+o = s:option(Flag, "auto_tune", translate("Automatic rates"),
+	translate("Learn the bounds from what the link actually delivers, per " ..
+	          "uplink, instead of setting them by hand. The fields below " ..
+	          "become a readout of what it has learned. A new network takes " ..
+	          "a few minutes of real traffic to settle; one you have used " ..
+	          "before is restored immediately."))
+o.default = "0"
+o.rmempty = false
+
 o = s:option(DummyValue, "_rates", translate("Live shaper rate"))
 o.rawhtml = true
 o.cfgvalue = function()
@@ -79,7 +88,7 @@ o.cfgvalue = function()
 end
 
 o = s:option(Value, "base_dl_shaper_rate_kbps", translate("Download base (kbit/s)"),
-	translate("Where the shaper starts, and where it returns after an idle period. Set it near your normal measured rate."))
+	translate("Where the shaper starts, and where it returns after an idle period. Ignored while Automatic rates is on."))
 o.datatype = "uinteger"
 
 o = s:option(Value, "min_dl_shaper_rate_kbps", translate("Download min (kbit/s)"))

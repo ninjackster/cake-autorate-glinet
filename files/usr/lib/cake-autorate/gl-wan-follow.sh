@@ -91,6 +91,20 @@ if [ "$dev" != "$prev" ]; then
 	log "WAN changed: ${prev:-none} -> ${dev}"
 	uci -q set ${CONF}.${SECTION}.ul_if="$dev"
 	uci -q set ${CONF}.${SECTION}.dl_if="$(ifb_name "$dev")"
+
+	# Bounds learned on a previous visit to this uplink. A network we have
+	# used before is right immediately instead of relearning from scratch.
+	if [ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ]; then
+		key="learned_$(printf '%s' "$dev" | tr -c 'A-Za-z0-9' '_')"
+		for d in dl ul; do
+			m="$(uci -q get ${CONF}.${key}_${d})"
+			[ -n "$m" ] || continue
+			uci -q set ${CONF}.${SECTION}.max_${d}_shaper_rate_kbps="$m"
+			uci -q set ${CONF}.${SECTION}.base_${d}_shaper_rate_kbps=$(( m * 85 / 100 ))
+			uci -q set ${CONF}.${SECTION}.min_${d}_shaper_rate_kbps=$(( m * 15 / 100 ))
+			log "restored learned ${d} bounds for ${dev}: max ${m}k"
+		done
+	fi
 	uci -q commit ${CONF}
 fi
 
