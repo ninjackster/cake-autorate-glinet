@@ -40,6 +40,7 @@ pct() { echo $(( $1 * $2 / 100 )); }
 mem_key() { printf 'learned_%s' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9' '_')"; }
 
 changed=0
+bounds_changed=0
 for dir in dl ul; do
 	case "$dir" in
 		dl) iface="$ifb" ;;
@@ -75,9 +76,21 @@ for dir in dl ul; do
 	uci -q set ${CONF}.${SEC}.base_${dir}_shaper_rate_kbps="$new_base"
 	uci -q set ${CONF}.${SEC}.min_${dir}_shaper_rate_kbps="$new_min"
 	uci -q set ${CONF}.$(mem_key "$dev")_${dir}="$new_max"
-	changed=1
+	changed=1; bounds_changed=1
 	logger -t cake-autorate-tune \
 		"${dir} on ${dev}: peak ${peak}k, max ${cur_max}k -> ${new_max}k"
+done
+
+# Remember the current ceilings for this uplink even when nothing moved this
+# run. Only writing them on change would mean a link that converged long ago
+# is never recorded, and switching away and back would relearn from scratch.
+for dir in dl ul; do
+	cur="$(uci -q get ${CONF}.${SEC}.max_${dir}_shaper_rate_kbps)"
+	[ -n "$cur" ] || continue
+	if [ "$(uci -q get ${CONF}.$(mem_key "$dev")_${dir})" != "$cur" ]; then
+		uci -q set ${CONF}.$(mem_key "$dev")_${dir}="$cur"
+		changed=1
+	fi
 done
 
 if [ "$changed" = "1" ]; then
@@ -88,5 +101,5 @@ if [ "$changed" = "1" ]; then
 	[ -n "$ulmin" ] && [ -n "$thr" ] && [ "$thr" -gt "$ulmin" ] && \
 		uci -q set ${CONF}.${SEC}.connection_active_thr_kbps="$(pct "$ulmin" 50)"
 	uci -q commit ${CONF}
-	/etc/init.d/cake-autorate restart >/dev/null 2>&1
+	[ "$bounds_changed" = "1" ] && /etc/init.d/cake-autorate restart >/dev/null 2>&1
 fi
