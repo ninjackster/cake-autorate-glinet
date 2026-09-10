@@ -152,6 +152,11 @@ section_iface_is_up()
 	[ -n "$ul_if" ] || return 1
 	[ -e "/sys/class/net/${ul_if}" ] || return 1
 	ip route show default dev "$ul_if" 2>/dev/null | grep -q . && return 0
+	# Bridge-shaping mode: the shaped device is the LAN bridge or its IFB, so
+	# it will never carry a default route. Require only that some WAN is up.
+	case "$ul_if" in
+		ifb4*|br-*) ip route show default 2>/dev/null | grep -q . && return 0 ;;
+	esac
 	return 1
 }
 

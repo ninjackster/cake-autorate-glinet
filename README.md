@@ -319,6 +319,46 @@ opkg list-installed | grep -c '^luci'      # 24 on a Mudi 7 4.10.0
 ls /usr/lib/lua/luci/model/cbi             # luci-compat present means classic CBI works
 ```
 
+## Bridge mode for modem uplinks (built, NOT yet validated)
+
+A Qualcomm modem interface cannot be shaped directly: `rmnet` devices sit on
+the IPA hardware data path and use `rmnet_sch`, and putting cake on the root
+qdisc with an IFB ingress redirect takes the link down. That is not theory. It
+took a router offline, and the interfaces are excluded from selection now.
+
+GL already solved this and I misread it as a quirk: their stock SQM config on
+this hardware is `interface 'br-lan'`, not the WAN device. Shaping the LAN
+bridge works whatever the uplink is.
+
+The catch is that the directions swap. On a WAN device, egress is upload and
+the IFB carries download. On the LAN bridge it is the other way round, because
+traffic leaving `br-lan` is heading to the LAN clients, which is what the
+internet sent you:
+
+```
+WAN device     egress = upload     ifb = download
+LAN bridge     egress = DOWNLOAD   ifb = UPLOAD
+```
+
+So `sqm`'s own `download` and `upload` options have to be swapped too.
+`shape_mode` selects the behaviour: `wan`, `bridge`, or `auto` (bridge only
+when the uplink is a modem).
+
+**What is verified:** the mapping is right. With 30 down / 10 up configured,
+`sqm.autorate.upload=30000` lands on `br-lan` and `sqm.autorate.download=10000`
+lands on `ifb4br-lan`, and a download tracks the `br-lan` rate.
+
+**What is not:** upload shaping did not take effect in testing. 44.8 Mbps was
+measured against an 8.2 Mbit shaper, and the bridge qdiscs counted about 1MB
+across a full speed test, so most traffic bypassed them. Flow offloading is the
+obvious suspect, since the flowtable fast path can shortcut the bridge, and
+notably offloading does NOT bypass the qdisc in WAN mode (measured earlier in
+this README). That difference is unconfirmed: the test link degraded badly
+enough to make the controlled comparison worthless.
+
+Do not rely on bridge mode until upload shaping is confirmed on a stable link
+with a modem uplink, which is the case it exists for.
+
 ## What it actually costs, measured
 
 Measured on a Mudi 7 at ~47 Mbps down / 46 up, from a LAN client so the traffic crossed the router's forwarding path.
