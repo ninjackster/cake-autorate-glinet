@@ -9,14 +9,18 @@
 
 . /usr/lib/cake-autorate/gl-shape-lib.sh
 
-CEILING=1000000     # 1 Gbit sanity cap
-FLOOR=2000          # never propose a max below this
 STEP_UP=125         # percent, when the shaper is pinned at max
 SLACK=120           # percent headroom above the observed peak
 DEADBAND=10         # percent change required before rewriting anything
 
 [ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ] || exit 0
 [ "$(uci -q get ${CONF}.${SECTION}.enabled)"   = "1" ] || exit 0
+
+# The follower writes the same UCI config and restarts the same service, from
+# cron every minute and from hotplug. Without this the tuner could interleave a
+# UCI commit or restart the service underneath it.
+exec 9>"$LOCK_FILE"
+take_lock 60 || exit 0
 
 wan="$(uci -q get ${CONF}.${SECTION}.active_wan)"
 [ -n "$wan" ] || exit 0
@@ -57,28 +61,18 @@ for dir in dl ul; do
 	else
 		new_max="$(pct "$peak" "$SLACK")"
 	fi
-	[ "$new_max" -gt "$CEILING" ] && new_max="$CEILING"
-	[ "$new_max" -lt "$FLOOR" ]   && new_max="$FLOOR"
 
 	delta=$(( new_max - cur_max )); [ "$delta" -lt 0 ] && delta=$(( -delta ))
 	[ "$delta" -lt "$(pct "$cur_max" "$DEADBAND")" ] && continue
 
-	uci -q set ${CONF}.${SECTION}.max_${dir}_shaper_rate_kbps="$new_max"
-	uci -q set ${CONF}.${SECTION}.base_${dir}_shaper_rate_kbps="$(pct "$new_max" 85)"
-	nm="$(pct "$new_max" 15)"; [ "$nm" -lt "$FLOOR" ] && nm="$FLOOR"
-	uci -q set ${CONF}.${SECTION}.min_${dir}_shaper_rate_kbps="$nm"
+	set_bounds "$dir" "$new_max"
 	changed=1; bounds_changed=1
 	logger -t cake-autorate-tune \
 		"${dir} on ${wan}: peak ${peak}k, max ${cur_max}k -> ${new_max}k"
 done
 
 if [ "$changed" = "1" ]; then
-	# The idle threshold must stay at or below the upload minimum or the
-	# service refuses to start.
-	ulmin="$(uci -q get ${CONF}.${SECTION}.min_ul_shaper_rate_kbps)"
-	thr="$(uci -q get ${CONF}.${SECTION}.connection_active_thr_kbps)"
-	[ -n "$ulmin" ] && [ -n "$thr" ] && [ "$thr" -gt "$ulmin" ] && \
-		uci -q set ${CONF}.${SECTION}.connection_active_thr_kbps="$(pct "$ulmin" 50)"
+	clamp_active_thr
 	uci -q commit ${CONF}
-	[ "$bounds_changed" = "1" ] && /etc/init.d/cake-autorate restart >/dev/null 2>&1
+	[ "$bounds_changed" = "1" ] && /etc/init.d/cake-autorate restart >/dev/null 2>&1 9>&-
 fi

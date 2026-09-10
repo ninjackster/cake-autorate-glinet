@@ -105,3 +105,54 @@ write_sqm() {
 	uci -q set sqm.autorate.upload="$ul_rate"
 	uci -q commit sqm
 }
+
+# Both the follower and the tuner write these bounds. They used to derive them
+# independently and drifted: the follower skipped the floor and never touched
+# the idle threshold, so a restored slow uplink could leave
+# connection_active_thr_kbps above min_ul, and cake-autorate then exits at
+# startup. Deriving them in one place is the fix.
+CEILING_KBPS=1000000     # 1 Gbit sanity cap
+FLOOR_KBPS=2000          # smallest sensible ceiling
+MIN_FLOOR_KBPS=500       # smallest sensible floor
+LOCK_FILE=/var/lock/cake-wan-follow.lock
+
+# Bounded wait for the shared lock. busybox flock has only -s -x -u -n, so a
+# timeout has to be a retry loop. Callers must have opened fd 9 themselves.
+take_lock() {
+	local waited=0 limit="${1:-60}"
+	while ! flock -n 9
+	do
+		waited=$((waited + 1))
+		[ "$waited" -ge "$limit" ] && return 1
+		sleep 1
+	done
+	return 0
+}
+
+# The idle threshold must stay at or below the upload minimum or the service
+# exits at startup. Every path that lowers min_ul has to call this.
+clamp_active_thr() {
+	local ulmin thr
+	ulmin="$(uci -q get ${CONF}.${SECTION}.min_ul_shaper_rate_kbps)"
+	thr="$(uci -q get ${CONF}.${SECTION}.connection_active_thr_kbps)"
+	[ -n "$ulmin" ] && [ -n "$thr" ] || return 0
+	[ "$thr" -le "$ulmin" ] && return 0
+	uci -q set ${CONF}.${SECTION}.connection_active_thr_kbps=$(( ulmin / 2 ))
+}
+
+# Derive base and min from a ceiling and write all three, preserving
+# min <= base <= max. Flooring min without also checking it against base is how
+# a low ceiling used to produce min > base.
+set_bounds() {
+	local dir="$1" mx="$2" base mn
+	[ -n "$mx" ] || return 1
+	[ "$mx" -gt "$CEILING_KBPS" ] && mx="$CEILING_KBPS"
+	[ "$mx" -lt "$FLOOR_KBPS" ]   && mx="$FLOOR_KBPS"
+	base=$(( mx * 85 / 100 ))
+	mn=$(( mx * 15 / 100 ))
+	[ "$mn" -lt "$MIN_FLOOR_KBPS" ] && mn="$MIN_FLOOR_KBPS"
+	[ "$mn" -gt "$base" ] && mn="$base"
+	uci -q set ${CONF}.${SECTION}.max_${dir}_shaper_rate_kbps="$mx"
+	uci -q set ${CONF}.${SECTION}.base_${dir}_shaper_rate_kbps="$base"
+	uci -q set ${CONF}.${SECTION}.min_${dir}_shaper_rate_kbps="$mn"
+}

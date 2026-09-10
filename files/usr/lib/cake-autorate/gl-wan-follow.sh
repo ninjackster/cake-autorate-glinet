@@ -8,26 +8,17 @@
 
 . /usr/lib/cake-autorate/gl-shape-lib.sh
 
-LOCK=/var/lock/cake-wan-follow.lock
 log() { logger -t cake-wan-follow "$1"; }
 
 [ "$(uci -q get ${CONF}.${SECTION}.wan_follow)" = "1" ] || exit 0
 [ "$(uci -q get ${CONF}.${SECTION}.enabled)"    = "1" ] || exit 0
 
-exec 9>"$LOCK"
-# busybox flock has only -s -x -u -n; there is no -w, so a bounded wait is a
-# retry loop. Bounded rather than blocking because cron also calls this.
-lock_wait=0
-while ! flock -n 9
-do
-	lock_wait=$((lock_wait + 1))
-	[ "$lock_wait" -ge 60 ] && exit 0
-	sleep 1
-done
+exec 9>"$LOCK_FILE"
+take_lock 60 || exit 0
 
 dev="$(wan_dev)"
 if [ -z "$dev" ]; then
-	if /etc/init.d/cake-autorate running 2>/dev/null; then
+	if /etc/init.d/cake-autorate running 2>/dev/null 9>&-; then
 		log "no default route; stopping"
 		/etc/init.d/cake-autorate stop >/dev/null 2>&1 9>&-
 	fi
@@ -49,8 +40,20 @@ fi
 # Compare against actual state, not the last value written. If an uplink drops
 # and the same one returns, ul_if still matches while the service sits stopped.
 if [ "$dev" = "$prev_wan" ] && [ "$CA_UL_IF" = "$prev_ul" ] && [ "$sqm_ok" = "1" ] \
-   && /etc/init.d/cake-autorate running 2>/dev/null
+   && /etc/init.d/cake-autorate running 2>/dev/null 9>&-
 then
+	exit 0
+fi
+
+# A modem renumbers itself (rmnet_data0 <-> rmnet_data1) without the link
+# changing. In bridge mode the shaped device is br-lan either way, so record
+# the new name for the tuner's memory key but do not tear the shaper down.
+if [ "$dev" != "$prev_wan" ] && [ "$CA_UL_IF" = "$prev_ul" ] && [ "$sqm_ok" = "1" ] \
+   && /etc/init.d/cake-autorate running 2>/dev/null 9>&-
+then
+	uci -q set ${CONF}.${SECTION}.active_wan="$dev"
+	uci -q commit ${CONF}
+	log "uplink renamed ${prev_wan} -> ${dev}; shaping ${SHAPE_IF} unchanged"
 	exit 0
 fi
 
@@ -67,12 +70,10 @@ if [ "$dev" != "$prev_wan" ] || [ "$CA_UL_IF" != "$prev_ul" ]; then
 		for d in dl ul; do
 			p="$(uci -q get ${CONF}.${key}_${d})"
 			[ -n "$p" ] || continue
-			m=$(( p * 120 / 100 ))
-			uci -q set ${CONF}.${SECTION}.max_${d}_shaper_rate_kbps="$m"
-			uci -q set ${CONF}.${SECTION}.base_${d}_shaper_rate_kbps=$(( m * 85 / 100 ))
-			uci -q set ${CONF}.${SECTION}.min_${d}_shaper_rate_kbps=$(( m * 15 / 100 ))
+			set_bounds "$d" $(( p * 120 / 100 ))
 			log "restored ${d} bounds for ${dev} from observed peak ${p}k"
 		done
+		clamp_active_thr
 	fi
 	uci -q commit ${CONF}
 fi
