@@ -49,18 +49,33 @@ o.cfgvalue = function()
 	if not dev:match("^[%w%.%-_]+$") then
 		return "<em>not shaping</em>"
 	end
-	local ifb = ("ifb4" .. dev):sub(1, 15)
-	local function rate(d)
+
+	-- tc picks its own unit (40Mbit one moment, 52302Kbit the next), so
+	-- normalise to a single scale and show bytes alongside bits.
+	local function fmt(d)
 		local r = sys.exec("tc qdisc show dev " .. d ..
 			" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1") or ""
 		r = r:gsub("bandwidth ", ""):gsub("%s+", "")
-		return (r ~= "" and r) or "-"
+		if r == "" then return "-" end
+		local n, unit = r:match("^([%d%.]+)(%a+)$")
+		if not n then return r end
+		n = tonumber(n)
+		local u, kbit = unit:lower(), nil
+		if     u == "bit"  then kbit = n / 1000
+		elseif u == "kbit" then kbit = n
+		elseif u == "mbit" then kbit = n * 1000
+		elseif u == "gbit" then kbit = n * 1000000
+		else return r end
+		return string.format("%.1f Mbit/s <small>(%.1f MB/s)</small>",
+			kbit / 1000, kbit / 8000)
 	end
+
+	local ifb = ("ifb4" .. dev):sub(1, 15)
 	return string.format(
-		"down <strong>%s</strong> &middot; up <strong>%s</strong>" ..
+		"down <strong>%s</strong><br />up <strong>%s</strong>" ..
 		"<br /><small>Adjusted continuously between the min and max below. " ..
 		"The fields on this page are the bounds, not the live value.</small>",
-		rate(ifb), rate(dev))
+		fmt(ifb), fmt(dev))
 end
 
 o = s:option(Value, "base_dl_shaper_rate_kbps", translate("Download base (kbit/s)"),
