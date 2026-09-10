@@ -1,0 +1,24 @@
+--- /private/tmp/claude-501/-Users-jaimemurillo-Library-Mobile-Documents-com-apple-CloudDocs-Projects/34f1255d-467b-4431-9fc2-a2ca0f8161ce/scratchpad/fw/orig/etc/init.d/cake-autorate	2026-09-04 01:20:50
++++ /private/tmp/claude-501/-Users-jaimemurillo-Library-Mobile-Documents-com-apple-CloudDocs-Projects/34f1255d-467b-4431-9fc2-a2ca0f8161ce/scratchpad/port/cake-autorate.init	2026-09-09 23:24:50
+@@ -73,12 +73,19 @@
+ section_iface_is_up() {
+ 	local section="$1"
+ 	local iface
++	local ul_if
+ 
+ 	iface="$(resolve_section_iface "$section")"
+ 
+-	network_iface_is_up "$iface" || return 1
++	network_iface_is_up "$iface" && return 0
+ 
+-	return 0
++	# Fallback: the device carries the default route but has no netifd
++	# network.interface. GL cellular modems (rmnet_dataN) are exactly this.
++	ul_if="$(uci -q get cake-autorate.${section}.ul_if)"
++	[ -n "$ul_if" ] || return 1
++	[ -e "/sys/class/net/${ul_if}" ] || return 1
++	ip route show default dev "$ul_if" 2>/dev/null | grep -q . && return 0
++	return 1
+ }
+ 
+ has_enabled_instance() {

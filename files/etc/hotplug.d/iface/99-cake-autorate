@@ -1,0 +1,13 @@
+#!/bin/sh
+# Re-point cake-autorate when a WAN comes up or goes down.
+case "$ACTION" in
+	ifup|ifdown) ;;
+	*) exit 0 ;;
+esac
+case "$INTERFACE" in
+	loopback|lan) exit 0 ;;
+esac
+[ -x /usr/lib/cake-autorate/gl-wan-follow.sh ] || exit 0
+
+# Routes settle a moment after the hotplug fires; the lock collapses bursts.
+( sleep 3; /usr/lib/cake-autorate/gl-wan-follow.sh ) >/dev/null 2>&1 &

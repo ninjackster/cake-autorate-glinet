@@ -1,0 +1,117 @@
+#!/bin/sh /etc/rc.common
+#
+# Origin: GL.iNet firmware mt6000-4.11.0_beta1 (GL-MT6000).
+# Modified: section_iface_is_up() gains a default-route fallback so a
+# device with no netifd network.interface (GL cellular rmnet_dataN) can
+# start. See patches/ for the diff against the unmodified original.
+# Licence: GPL-2.0, derived from cake-autorate's launcher.sh.template.
+
+START=97
+STOP=4
+USE_PROCD=1
+
+ubus_iface_exists() {
+	local iface="$1"
+
+	[ -n "$iface" ] || return 1
+	ubus list 2>/dev/null | grep -Fqx "network.interface.${iface}"
+}
+
+is_ipv6_network_iface() {
+	local iface="$1"
+	local proto
+
+	[ -n "$iface" ] || return 1
+	case "$iface" in
+		*6) return 0 ;;
+	esac
+
+	proto="$(uci -q get network.${iface}.proto)"
+	case "$proto" in
+		dhcpv6|6in4|6rd|dslite|map|464xlat) return 0 ;;
+	esac
+
+	return 1
+}
+
+network_iface_is_up() {
+	local iface="$1"
+
+	ubus_iface_exists "$iface" || return 1
+	is_ipv6_network_iface "$iface" && return 1
+	[ "$(ubus call "network.interface.${iface}" status 2>/dev/null | jsonfilter -e '@.up')" = "true" ]
+}
+
+resolve_section_iface() {
+	local section="$1"
+	local ul_if
+	local item
+	local status
+	local device
+	local l3_device
+
+	case "$section" in
+		*6) return 1 ;;
+	esac
+
+	ul_if="$(uci -q get cake-autorate.${section}.ul_if)"
+	if ubus_iface_exists "$ul_if"; then
+		is_ipv6_network_iface "$ul_if" && return 1
+		printf '%s' "$ul_if"
+		return 0
+	fi
+
+	for item in $(ubus list 2>/dev/null | sed -n 's/^network\.interface\.//p'); do
+		[ "$item" = "loopback" ] && continue
+		is_ipv6_network_iface "$item" && continue
+		status="$(ubus call "network.interface.${item}" status 2>/dev/null)"
+		device="$(printf '%s' "$status" | jsonfilter -q -e '@.device')"
+		l3_device="$(printf '%s' "$status" | jsonfilter -q -e '@.l3_device')"
+		if [ "$device" = "$ul_if" ] || [ "$l3_device" = "$ul_if" ]; then
+			printf '%s' "$item"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+section_iface_is_up() {
+	local section="$1"
+	local iface
+	local ul_if
+
+	iface="$(resolve_section_iface "$section")"
+
+	network_iface_is_up "$iface" && return 0
+
+	# Fallback: the device carries the default route but has no netifd
+	# network.interface. GL cellular modems (rmnet_dataN) are exactly this.
+	ul_if="$(uci -q get cake-autorate.${section}.ul_if)"
+	[ -n "$ul_if" ] || return 1
+	[ -e "/sys/class/net/${ul_if}" ] || return 1
+	ip route show default dev "$ul_if" 2>/dev/null | grep -q . && return 0
+	return 1
+}
+
+has_enabled_instance() {
+	local section
+
+	for section in $(uci -q show cake-autorate | sed -n "s/^cake-autorate\.\([^.=]*\)=cake_autorate$/\1/p"); do
+		[ "$(uci -q get cake-autorate.${section}.enabled)" = "1" ] || continue
+		section_iface_is_up "$section" && return 0
+	done
+
+	return 1
+}
+
+start_service() {
+	has_enabled_instance || return 0
+
+	mkdir -p /tmp/cake-autorate
+	procd_open_instance
+	procd_set_param env CAKE_AUTORATE_CONFIG_PREFIX=/tmp/cake-autorate
+	procd_set_param command /usr/lib/cake-autorate/launcher.sh
+	procd_set_param respawn
+	procd_close_instance
+}
