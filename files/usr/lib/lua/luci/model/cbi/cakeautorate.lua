@@ -4,6 +4,7 @@
 -- adjust an existing cake qdisc, so gl-autorate-ctl.sh also provisions or
 -- tears down the SQM queue on the live WAN.
 local sys  = require "luci.sys"
+local xml  = require "luci.xml"   -- luci.util.pcdata is deprecated
 local uci  = require "luci.model.uci".cursor()
 
 local m = Map("cake-autorate",
@@ -35,8 +36,9 @@ o.rawhtml = true
 o.cfgvalue = function()
 	local dev = uci:get("cake-autorate", "wan", "ul_if") or "none"
 	local run = sys.call("/etc/init.d/cake-autorate running >/dev/null 2>&1") == 0
-	return string.format("<strong>%s</strong> &middot; service %s", dev,
-		run and "running" or "stopped")
+	-- rawhtml is on, so escape rather than trusting a config value
+	return string.format("<strong>%s</strong> &middot; service %s",
+		xml.pcdata(dev), run and "running" or "stopped")
 end
 
 -- The live rate is the thing autorate actually moves. It is not stored in
@@ -67,14 +69,17 @@ o.cfgvalue = function()
 		r = r:gsub("bandwidth ", ""):gsub("%s+", "")
 		if r == "" then return "-" end
 		local n, unit = r:match("^([%d%.]+)(%a+)$")
-		if not n then return r end
+		if not n then return xml.pcdata(r) end
 		n = tonumber(n)
+		-- a match is not a number: "1.2.3" matches [%d%.]+ and tonumber is nil,
+		-- and arithmetic on nil would throw and break the entire page
+		if not n then return xml.pcdata(r) end
 		local u, kbit = unit:lower(), nil
 		if     u == "bit"  then kbit = n / 1000
 		elseif u == "kbit" then kbit = n
 		elseif u == "mbit" then kbit = n * 1000
 		elseif u == "gbit" then kbit = n * 1000000
-		else return r end
+		else return xml.pcdata(r) end
 		return string.format("%.1f Mbit/s <small>(%.1f MB/s)</small>",
 			kbit / 1000, kbit / 8000)
 	end
