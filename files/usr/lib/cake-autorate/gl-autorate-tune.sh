@@ -91,5 +91,5 @@ done
 if [ "$changed" = "1" ]; then
 	clamp_active_thr
 	uci -q commit ${CONF}
-	[ "$bounds_changed" = "1" ] && /etc/init.d/cake-autorate restart >/dev/null 2>&1 9>&-
+	[ "$bounds_changed" = "1" ] && restart_autorate
 fi

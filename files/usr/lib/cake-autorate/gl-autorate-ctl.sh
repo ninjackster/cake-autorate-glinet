@@ -29,7 +29,7 @@ do_on() {
 	write_sqm
 	/etc/init.d/sqm restart >/dev/null 2>&1
 	/etc/init.d/cake-autorate enable >/dev/null 2>&1
-	/etc/init.d/cake-autorate restart >/dev/null 2>&1
+	restart_autorate
 	echo "on: uplink ${dev}, shaping ${SHAPE_IF} (${target} mode)"
 }
 

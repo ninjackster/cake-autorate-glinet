@@ -174,3 +174,31 @@ mem_key() {
 	fi
 	printf 'learned_%s' "$(printf '%s' "$d" | tr -c 'A-Za-z0-9' '_')"
 }
+
+# Restart cake-autorate safely.
+#
+# It guards itself with /var/run/cake-autorate/<instance>. A plain
+# "/etc/init.d/cake-autorate restart" can start the new instance before the old
+# one has released that directory, and the new one then refuses:
+#
+#   ERROR; /var/run/cake-autorate/wan already exists and an instance appears
+#          to be running with main process ...
+#
+# which leaves the service down with orphaned workers and the shaper frozen at
+# whatever rate it last set. Observed on two restarts a few seconds apart.
+restart_autorate() {
+	local i=0
+	/etc/init.d/cake-autorate stop >/dev/null 2>&1 9>&-
+	while [ "$i" -lt 15 ]; do
+		[ "$(worker_count)" -eq 0 ] && break
+		i=$((i + 1))
+		sleep 1
+	done
+	# No workers left means a surviving runtime dir is stale, and leaving it
+	# would make the next start refuse.
+	[ "$(worker_count)" -eq 0 ] && rm -rf "/var/run/cake-autorate/${SECTION}"
+	/etc/init.d/cake-autorate start >/dev/null 2>&1 9>&-
+}
+
+# cake-autorate's workers are the only things running under bash5.
+worker_count() { ls -l /proc/[0-9]*/exe 2>/dev/null | grep -c bash5; }

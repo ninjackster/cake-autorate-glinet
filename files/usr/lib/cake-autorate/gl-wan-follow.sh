@@ -81,5 +81,5 @@ fi
 # cake-autorate adjusts an existing cake qdisc; it never creates one.
 write_sqm
 /etc/init.d/sqm restart >/dev/null 2>&1 9>&-
-/etc/init.d/cake-autorate restart >/dev/null 2>&1 9>&-
+restart_autorate
 log "now shaping ${SHAPE_IF} for uplink ${dev}"
