@@ -17,7 +17,10 @@ wan_dev() {
 		  if (d == "") next
 		  # Never follow a tunnel: shaping it would leave the physical uplink
 		  # underneath, which is the real bottleneck, unshaped.
-		  if (d ~ /^(wg|tun|ovpn|tailscale|ipsec|gre|sit)/) next
+		  # connectify0 is the Speedify tunnel. Shaping it would leave the real
+		  # uplink unshaped and pin one rate across a bond that is deliberately
+		  # spreading traffic over several links.
+		  if (d ~ /^(wg|tun|ovpn|tailscale|ipsec|gre|sit|connectify|speedify|zt|nebula)/) next
 		  if (best == "" || m+0 < bm+0) { best = d; bm = m }
 		}
 		END { print best }'
