@@ -29,10 +29,28 @@ LOG="/var/log/cake-autorate.${SECTION}.log"
 
 pct() { echo $(( $1 * $2 / 100 )); }
 
+# Peak rate applied to a device SINCE THE LAST SERVICE START.
+#
+# Bounding it to this run matters on a travel router: device names are reused
+# across completely different networks, so wlan4 at one rental is not wlan4 at
+# the next. A stale peak from a fast link would inflate the ceiling on a slow
+# one, and the tuner would then spend its time probing bandwidth that is not
+# there. cake-autorate restarts whenever the uplink changes, so its own start
+# line is exactly the right boundary.
+#
+# The number is taken from between "bandwidth " and "Kbit" rather than with a
+# bare [0-9]* match, which would also capture the digit in a name like wlan4.
 peak_for() {
-	tail -4000 "$LOG" 2>/dev/null |
-		grep -o "dev $1 cake bandwidth [0-9]*Kbit" |
-		grep -o '[0-9]*' | sort -n | tail -1
+	awk -v ifc="$1" '
+		/Started cake-autorate/ { seen = 1; max = 0; next }
+		seen && index($0, "dev " ifc " cake bandwidth ") {
+			if (match($0, /bandwidth [0-9]+Kbit/)) {
+				v = substr($0, RSTART + 10, RLENGTH - 14) + 0
+				if (v > max) max = v
+			}
+		}
+		END { if (max > 0) print max }
+	' "$LOG" 2>/dev/null
 }
 
 changed=0
