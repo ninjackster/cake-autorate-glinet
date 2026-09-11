@@ -10,6 +10,9 @@
 #
 # GPL-2.0, matching cake-autorate itself.
 
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
 CTL=/usr/lib/cake-autorate/gl-autorate-ctl.sh
 
 reply() {
@@ -31,6 +34,17 @@ case "$QUERY_STRING" in
 	action=off)       action=off ;;
 	action=status)    action=status ;;
 	*) reply "400 Bad Request" "usage: ?action=toggle|on|off|status"; exit 0 ;;
+esac
+
+# A GET that changes state can be triggered by any page a tailnet member
+# visits, via <img src="...?action=toggle">. Reads stay on GET; writes do not.
+case "$action" in
+	toggle|on|off)
+		if [ "${REQUEST_METHOD:-GET}" != "POST" ]; then
+			reply "405 Method Not Allowed" "use POST for ${action} (GET is allowed for ?action=status)"
+			exit 0
+		fi
+		;;
 esac
 
 case "$action" in

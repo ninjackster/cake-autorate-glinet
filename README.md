@@ -463,10 +463,31 @@ ip saddr 100.64.0.0/10 tcp dport 8099 accept   "Allow-autorate-toggle-tailnet"
 
 After which the same LAN request gets nothing and the drop counter increments.
 
+Reads are GET; writes are POST. A GET that changes state can be triggered by
+any page a tailnet member happens to visit, via `<img src="...?action=toggle">`,
+so `toggle`, `on` and `off` return 405 unless the method is POST. `?action=status`
+stays on GET.
+
 There is deliberately no token or password. Authentication is tailnet
 membership, and the honest tradeoff is that any device on your tailnet can
 toggle the shaper. That is acceptable for something this low stakes and
 self-correcting. Do not extend the endpoint to anything that is not.
+
+**Reconcile every run, never gate on one field.** An earlier version returned
+early when `listen_http` already matched, which skipped firewall rule creation
+entirely. Reproduced: delete the two rules, leave the binding correct, run the
+script, and the port is reachable from the LAN with no restriction at all.
+
+```
+rules before: 0
+(run the binder)
+rules after : 0        <- the bug
+GET from a LAN host -> HTTP 200
+```
+
+The same shape bit the listener options: gating the whole uhttpd section on
+`listen_http` meant a changed `max_requests` was never applied. Both are now
+reconciled field by field on every run, and both are idempotent.
 
 A cron entry re-runs the binder every five minutes because the Tailscale
 address can change; it exits immediately when nothing has moved. If Tailscale
