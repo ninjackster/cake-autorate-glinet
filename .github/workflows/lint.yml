@@ -19,8 +19,16 @@ jobs:
 
       - name: Install checkers
         run: |
+          # Ubuntu's packaged shellcheck is old enough to reject "-s busybox"
+          # with "Unknown shell", which silently checks nothing. ci/lint.sh
+          # falls back to the ash dialect in that case, but the busybox dialect
+          # is the accurate one for these scripts, so fetch a current build.
+          SC_VER=v0.11.0
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SC_VER}/shellcheck-${SC_VER}.linux.x86_64.tar.xz" \
+            | tar -xJ --strip-components=1 -C /usr/local/bin "shellcheck-${SC_VER}/shellcheck"
+          chmod +x /usr/local/bin/shellcheck
           sudo apt-get update -qq
-          sudo apt-get install -y -qq shellcheck lua5.3
+          sudo apt-get install -y -qq lua5.3
 
       - name: Versions
         run: |

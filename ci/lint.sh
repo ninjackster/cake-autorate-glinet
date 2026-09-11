@@ -45,17 +45,40 @@ fi
 
 echo "== shellcheck =="
 if command -v shellcheck >/dev/null 2>&1; then
-	# Fail on errors only. Notes and warnings are advisory here: much of this
-	# is vendor code carried with minimal edits, and churning it to silence
-	# style notes would make the patches/ diffs harder to review.
-	# SC1091: sourced files are resolved at runtime on the router.
-	for f in $ASH; do
-		shellcheck -s busybox -S error -e SC1091 "$f" || fail=1
+	# The busybox dialect only exists in newer shellcheck. An older build
+	# rejects it with "Unknown shell: busybox" on every file, which looks like
+	# a clean run if you are not watching the exit codes. Pick one it has.
+	# Probe on the message, not the exit code: shellcheck exits 1 for "found an
+	# issue" and 4 for "Unknown shell", so an exit-code probe marks a perfectly
+	# good dialect unsupported the moment the probe script has any finding.
+	SHELL_DIALECT=""
+	for d in busybox ash dash sh; do
+		if ! printf '#!/bin/sh\ntrue\n' | shellcheck -s "$d" - 2>&1 \
+		     | grep -q 'Unknown shell'; then
+			SHELL_DIALECT="$d"; break
+		fi
 	done
-	for f in $BASH_FILES; do
-		shellcheck -s bash -S error -e SC1091 "$f" || fail=1
-	done
-	note "no shellcheck errors"
+	[ -n "$SHELL_DIALECT" ] || { note "shellcheck has no usable dialect"; fail=1; }
+
+	if [ -n "$SHELL_DIALECT" ]; then
+		sc_fail=0
+		# Fail on errors only. Notes and warnings are advisory: much of this is
+		# vendor code carried with minimal edits, and churning it to silence
+		# style notes would make the patches/ diffs harder to review.
+		# SC1091: sourced files are resolved at runtime on the router.
+		for f in $ASH; do
+			shellcheck -s "$SHELL_DIALECT" -S error -e SC1091 "$f" || sc_fail=1
+		done
+		for f in $BASH_FILES; do
+			shellcheck -s bash -S error -e SC1091 "$f" || sc_fail=1
+		done
+		if [ "$sc_fail" -eq 0 ]; then
+			note "no shellcheck errors (dialect: $SHELL_DIALECT)"
+		else
+			note "shellcheck errors above (dialect: $SHELL_DIALECT)"
+			fail=1
+		fi
+	fi
 else
 	note "shellcheck not installed, skipped"
 fi
