@@ -14,6 +14,44 @@ BASH5="$1"
 
 say() { echo "  $*"; }
 
+# --- Preflight -------------------------------------------------------------
+# The bash we install is an aarch64 musl binary lifted from GL's own 4.11 image.
+# Checking that here turns "it installed but nothing runs" into one clear line.
+arch="$(uname -m 2>/dev/null)"
+case "$arch" in
+	aarch64) ;;
+	*) echo "this port installs an aarch64 binary; this device reports '$arch'."
+	   echo "Nothing was changed."; exit 1 ;;
+esac
+
+[ -e /lib/ld-musl-aarch64.so.1 ] || {
+	echo "no /lib/ld-musl-aarch64.so.1: this firmware is not musl-linked aarch64."
+	echo "Nothing was changed."; exit 1
+}
+
+# The three libraries the vendor bash is linked against. Missing any of them
+# means it installs and then fails to exec, which is a confusing way to fail.
+for lib in libncursesw.so.6 libgcc_s.so.1 libc.so; do
+	[ -e "/lib/$lib" ] || [ -e "/usr/lib/$lib" ] || {
+		echo "missing $lib, which the vendor bash needs. Nothing was changed."
+		exit 1
+	}
+done
+
+# bash5 is ~1MB and the scripts are small; 4MB is comfortable headroom.
+free_kb="$(df -k /overlay 2>/dev/null | awk 'NR==2{print $4}')"
+# An `x && { ... }` here would leave a false test as the block's exit status,
+# which under `set -e` aborts the installer on a perfectly healthy device.
+case "$free_kb" in
+	''|*[!0-9]*) : ;;  # unknown, do not block on it
+	*)
+		if [ "$free_kb" -lt 4096 ]; then
+			echo "only ${free_kb}KB free on /overlay; need about 4MB. Nothing was changed."
+			exit 1
+		fi
+		;;
+esac
+
 # --- Refuse to clobber a vendor build -------------------------------------
 # If GL ships cake-autorate for this model, theirs is the one to use. Ours
 # would overwrite their init script and launcher with patched copies.

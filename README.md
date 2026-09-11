@@ -504,6 +504,42 @@ Measured before the fix: the qdisc byte counter reset on every run. If Tailscale
 is down there is no address to bind and the listener simply does not come up,
 which is the failure direction you want.
 
+## What this has actually been tested on
+
+One device, by one person. Being straight about that matters more than a long
+list of models I have not touched.
+
+| Device | Firmware | Status |
+|---|---|---|
+| Mudi 7 (GL-E5800) | 4.10.0 | Everything here runs on this, daily |
+| Anything else | | Unknown |
+
+What it actually needs, which is narrower than "a GL router":
+
+```
+aarch64                          the bash binary is aarch64
+musl, /lib/ld-musl-aarch64.so.1  it is linked against musl, not glibc
+OpenWrt 23.05 base               GL 4.5 and later; earlier 4.x is 21.02/musl 1.1
+libncursesw.so.6, libgcc_s.so.1, libc.so
+sqm-scripts, kmod-sched-cake, fping
+```
+
+`install.sh` checks all of that before it writes anything and refuses with one
+line if the device does not match, so trying it on an unsupported model costs
+you nothing. Check by hand first if you prefer:
+
+```sh
+uname -m; cat /etc/openwrt_release | grep DISTRIB_RELEASE
+ls /lib/ld-musl-aarch64.so.1
+```
+
+A MediaTek model (Flint 2, Beryl AX) will fail the arch check, which is
+correct: the binary is Qualcomm-built aarch64 from GL's own image, and those
+models are the ones that already have 4.11 with this built in.
+
+If you do run it elsewhere, an issue saying which model and what happened is
+genuinely useful, working or not.
+
 ## What it actually costs, measured
 
 Measured on a Mudi 7 at ~47 Mbps down / 46 up, from a LAN client so the traffic crossed the router's forwarding path.
