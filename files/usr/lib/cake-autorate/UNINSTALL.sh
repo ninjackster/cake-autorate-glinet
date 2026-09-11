@@ -2,7 +2,10 @@
 # Remove the cake-autorate port. Stock bash was never touched.
 /etc/init.d/cake-autorate stop 2>/dev/null
 /etc/init.d/cake-autorate disable 2>/dev/null
-sed -i '/gl-wan-follow/d' /etc/crontabs/root 2>/dev/null && /etc/init.d/cron restart >/dev/null 2>&1
+# All three cron entries. Missing gl-autorate-tune left a line pointing at a
+# deleted script, failing every five minutes.
+sed -i '/gl-wan-follow/d;/gl-autorate-tune/d;/gl-autorate-httpd/d' /etc/crontabs/root 2>/dev/null
+/etc/init.d/cron restart >/dev/null 2>&1
 rm -f /etc/hotplug.d/iface/99-cake-autorate
 # release the physical switch, but only if it is still pointed at us
 [ "$(uci -q get switch-button.@main[0].func)" = "autorate" ] && {
@@ -16,7 +19,6 @@ uci -q delete uhttpd.autorate 2>/dev/null && uci -q commit uhttpd && /etc/init.d
 uci -q delete firewall.autorate_allow 2>/dev/null
 uci -q delete firewall.autorate_deny 2>/dev/null
 uci -q commit firewall && /etc/init.d/firewall reload >/dev/null 2>&1
-sed -i '/gl-autorate-httpd/d' /etc/crontabs/root 2>/dev/null
 rm -f /usr/lib/lua/luci/controller/cakeautorate.lua
 rm -f /usr/lib/lua/luci/model/cbi/cakeautorate.lua
 rm -f /usr/share/rpcd/acl.d/luci-app-cakeautorate.json
@@ -25,7 +27,10 @@ rm -f /etc/init.d/cake-autorate
 rm -f /etc/config/cake-autorate
 rm -rf /usr/lib/cake-autorate
 rm -f /usr/bin/bash5
-rm -rf /tmp/cake-autorate /var/log/cake-autorate.*.log /var/lock/cake-wan-follow.lock
+# cake-autorate.*.log does not match cake-autorate.wan.log.old, and the
+# runtime dir is the guard that makes a reinstall refuse to start.
+rm -rf /tmp/cake-autorate /var/run/cake-autorate /var/lock/cake-wan-follow.lock
+rm -f /var/log/cake-autorate.*.log /var/log/cake-autorate.*.log.old
 
 # Deleting the UCI section is not enough. Without a restart, sqm-scripts leaves
 # the cake qdisc and the ifb device in place until reboot, so a user who removed
@@ -35,6 +40,9 @@ if [ "$(uci -q get sqm.autorate)" = "queue" ]; then
 	uci -q commit sqm
 	/etc/init.d/sqm restart >/dev/null 2>&1
 fi
+
+# Leave no paths behind that no longer exist.
+sed -i '\|^/usr/bin/bash5$|d;\|^/usr/lib/cake-autorate/|d;\|^/etc/init.d/cake-autorate$|d;\|^/etc/hotplug.d/iface/99-cake-autorate$|d;\|^/etc/gl-switch.d/autorate.sh$|d;\|cakeautorate|d' /etc/sysupgrade.conf 2>/dev/null
 
 echo "removed. /bin/bash untouched:"
 bash --version | head -1
