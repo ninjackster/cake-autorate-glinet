@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: What this is tested on
+    url: https://github.com/ninjackster/cake-autorate-glinet#what-this-has-actually-been-tested-on
+    about: One device, one person. The requirements are narrower than "a GL router".

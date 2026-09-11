@@ -1,0 +1,49 @@
+name: Bug
+description: Something behaves wrong on a device where it already installed
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, worth ruling out the two that bite most often:
+
+        - **The shaper looks enabled but nothing is shaping.** Check
+          `connection_active_thr_kbps` is at or below `min_ul_shaper_rate_kbps`.
+          Above it, cake-autorate exits at startup and logs one line.
+        - **It stopped after a restart.** Look for `already exists and an
+          instance appears to be running` in the log. That is the runtime guard
+          at `/var/run/cake-autorate/<instance>`.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: What you did, in order. "It happened after a WAN change" counts.
+    validations:
+      required: true
+
+  - type: textarea
+    id: state
+    attributes:
+      label: State
+      render: shell
+      value: |
+        # paste the output of:
+        {
+          /usr/lib/cake-autorate/gl-autorate-ctl.sh status 2>&1
+          echo "--- config ---"; uci show cake-autorate 2>&1
+          echo "--- sqm ---";    uci show sqm.autorate 2>&1
+          echo "--- qdiscs ---"; tc qdisc show | grep -E 'cake|ifb' 
+          echo "--- log ---";    tail -20 /var/log/cake-autorate.wan.log 2>/dev/null
+          echo "--- follower/tuner ---"; logread 2>/dev/null | grep -E 'cake-wan-follow|cake-autorate-tune' | tail -10
+        } 2>&1
+    validations:
+      required: true

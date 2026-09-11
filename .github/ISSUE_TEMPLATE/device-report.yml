@@ -1,0 +1,87 @@
+name: Device report
+description: Say whether this worked on your router, or did not. Both are useful.
+title: "[device] "
+labels: ["device-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This has been tested on exactly one device by one person, so a report
+        either way is worth more than it sounds. A failure is as useful as a
+        success, especially if `install.sh` refused: that is the check doing
+        its job, and knowing which check fired tells me whether the port is a
+        near miss or genuinely wrong for your hardware.
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "GL-E5800 (Mudi 7), GL-MT3000 (Beryl AX), ..."
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: GL firmware version
+      placeholder: "4.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: What happened
+      options:
+        - Works, running it now
+        - Installs, but the shaper does not behave
+        - install.sh refused (preflight)
+        - Installed but something broke
+    validations:
+      required: true
+
+  - type: dropdown
+    id: uplink
+    attributes:
+      label: Which uplink were you on
+      multiple: true
+      options:
+        - Cellular modem
+        - WiFi repeater
+        - Ethernet WAN
+        - USB tether
+    validations:
+      required: true
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: Diagnostics
+      description: |
+        Run this on the router and paste the output. Check it before posting:
+        it includes your uplink device and the LAN subnet, and if you use the
+        tailnet endpoint it will show that address too. Redact anything you
+        would rather not publish.
+      render: shell
+      value: |
+        # paste the output of:
+        {
+          echo "model:    $(cat /proc/device-tree/model 2>/dev/null)"
+          echo "release:  $(grep DISTRIB_RELEASE /etc/openwrt_release 2>/dev/null)"
+          echo "arch:     $(uname -m)   musl: $(ls /lib/ld-musl-aarch64.so.1 2>/dev/null || echo absent)"
+          echo "bash5:    $(/usr/bin/bash5 --version 2>/dev/null | head -1 || echo absent)"
+          echo "stock sh: $(bash --version 2>/dev/null | head -1)"
+          echo "sqm:      $(opkg list-installed 2>/dev/null | grep -c sqm-scripts) cake: $(tc qdisc add dev lo root cake 2>&1 >/dev/null && tc qdisc del dev lo root 2>/dev/null && echo yes || echo no)"
+          echo "fping:    $(command -v fping || echo absent)"
+          echo "routes:"; ip route show default
+          echo "status:"; /usr/lib/cake-autorate/gl-autorate-ctl.sh status 2>&1
+          echo "last log:"; tail -5 /var/log/cake-autorate.wan.log 2>/dev/null
+        } 2>&1
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: If install.sh refused, the exact line it printed is the useful bit.
