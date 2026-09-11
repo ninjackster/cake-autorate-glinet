@@ -10,6 +10,13 @@ rm -f /etc/hotplug.d/iface/99-cake-autorate
 	uci -q commit switch-button
 }
 rm -f /etc/gl-switch.d/autorate.sh
+
+# tailnet toggle endpoint: listener, firewall rules and cron entry
+uci -q delete uhttpd.autorate 2>/dev/null && uci -q commit uhttpd && /etc/init.d/uhttpd reload >/dev/null 2>&1
+uci -q delete firewall.autorate_allow 2>/dev/null
+uci -q delete firewall.autorate_deny 2>/dev/null
+uci -q commit firewall && /etc/init.d/firewall reload >/dev/null 2>&1
+sed -i '/gl-autorate-httpd/d' /etc/crontabs/root 2>/dev/null
 rm -f /usr/lib/lua/luci/controller/cakeautorate.lua
 rm -f /usr/lib/lua/luci/model/cbi/cakeautorate.lua
 rm -f /usr/share/rpcd/acl.d/luci-app-cakeautorate.json

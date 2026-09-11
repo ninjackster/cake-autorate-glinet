@@ -48,11 +48,31 @@ off)
 	echo "off"
 	;;
 toggle)
-	# Single entry point for anything that has one button to spend.
+	# Single entry point for anything that has one button to spend. Prints one
+	# human-readable line, so a caller with a notification to fill needs no
+	# second round trip and no parsing.
 	if [ "$(uci -q get ${CONF}.${SECTION}.enabled)" = "1" ]; then
-		"$0" off
+		"$0" off >/dev/null 2>&1
+		echo "Autorate OFF"
 	else
-		"$0" on
+		"$0" on >/dev/null 2>&1
+		# the shaper needs a moment to come up before it can be reported
+		i=0
+		while [ "$i" -lt 10 ]; do
+			/etc/init.d/cake-autorate running >/dev/null 2>&1 && break
+			i=$((i + 1)); sleep 1
+		done
+		dev="$(uci -q get ${CONF}.${SECTION}.active_wan)"
+		shp="$(uci -q get sqm.autorate.interface)"
+		dl="$(uci -q get ${CONF}.${SECTION}.dl_if)"
+		ul="$(uci -q get ${CONF}.${SECTION}.ul_if)"
+		dlr="$(tc qdisc show dev "$dl" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1 | cut -d' ' -f2)"
+		ulr="$(tc qdisc show dev "$ul" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1 | cut -d' ' -f2)"
+		if /etc/init.d/cake-autorate running >/dev/null 2>&1; then
+			echo "Autorate ON via ${dev:-?} (shaping ${shp:-?}) ${dlr:-?} down / ${ulr:-?} up"
+		else
+			echo "Autorate failed to start on ${dev:-?}"
+		fi
 	fi
 	;;
 status)

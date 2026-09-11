@@ -1,0 +1,59 @@
+#!/bin/sh
+# CGI toggle endpoint for adaptive shaping.
+#
+# Served by a dedicated uhttpd instance bound ONLY to the router's Tailscale
+# address, so it is unreachable from the LAN, the WAN, or any other network.
+# Authentication is tailnet membership: there is deliberately no token or
+# password, because the alternative was storing a credential on every device
+# that wants to press the button. Toggling a shaper is low stakes and
+# self-correcting; do not extend this endpoint to anything that is not.
+#
+# GPL-2.0, matching cake-autorate itself.
+
+CTL=/usr/lib/cake-autorate/gl-autorate-ctl.sh
+
+reply() {
+	printf 'Status: %s\r\n' "$1"
+	printf 'Content-Type: text/plain; charset=utf-8\r\n'
+	printf 'Cache-Control: no-store\r\n'
+	printf '\r\n'
+	shift
+	printf '%s\n' "$*"
+}
+
+[ -x "$CTL" ] || { reply "503 Service Unavailable" "cake-autorate is not installed"; exit 0; }
+
+# QUERY_STRING looks like action=toggle. Accept nothing else.
+action=""
+case "$QUERY_STRING" in
+	action=toggle|"") action=toggle ;;
+	action=on)        action=on ;;
+	action=off)       action=off ;;
+	action=status)    action=status ;;
+	*) reply "400 Bad Request" "usage: ?action=toggle|on|off|status"; exit 0 ;;
+esac
+
+case "$action" in
+toggle)
+	out="$("$CTL" toggle 2>&1)"
+	reply "200 OK" "$out"
+	;;
+on|off)
+	"$CTL" "$action" >/dev/null 2>&1
+	out="$("$CTL" status 2>&1 | tr '\n' ' ')"
+	reply "200 OK" "$out"
+	;;
+status)
+	enabled="$(uci -q get cake-autorate.wan.enabled)"
+	if [ "$enabled" = "1" ]; then
+		dev="$(uci -q get cake-autorate.wan.active_wan)"
+		dl="$(uci -q get cake-autorate.wan.dl_if)"
+		ul="$(uci -q get cake-autorate.wan.ul_if)"
+		dlr="$(tc qdisc show dev "$dl" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1 | cut -d' ' -f2)"
+		ulr="$(tc qdisc show dev "$ul" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1 | cut -d' ' -f2)"
+		reply "200 OK" "Autorate ON via ${dev:-?} ${dlr:-?} down / ${ulr:-?} up"
+	else
+		reply "200 OK" "Autorate OFF"
+	fi
+	;;
+esac

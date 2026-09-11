@@ -427,6 +427,52 @@ not able to release the source code for the gl_screen module." The switch is
 the supported path, and `ubus call gl_screen set` is the only screen hook, found
 by reading GL's own `screen_disp_switch` rather than from any documentation.
 
+## A one-tap toggle from a phone, over Tailscale
+
+The Mudi 7 has no switch and its touchscreen is closed, so the button has to
+live somewhere else. A tailnet-only HTTP endpoint plus an iOS Shortcut gets
+there without storing a credential on the phone:
+
+```
+GET http://<tailnet-ip>:8099/cgi-bin/autorate?action=toggle
+->  Autorate ON via wlan4 (shaping wlan4) 207776Kbit down / 95839Kbit up
+->  Autorate OFF
+```
+
+`gl-autorate-httpd.sh` stands up a dedicated uhttpd instance bound to the
+router's Tailscale address, and `www/cgi-bin/autorate` is the handler.
+`?action=` accepts `toggle`, `on`, `off` and `status`; anything else is a 400.
+
+**Binding to the tailnet address is not on its own enough, and this is easy to
+get wrong.** The router is the default gateway for its own LAN, so a LAN client
+can simply route to the tailnet address and reach the listener. Measured, with
+Tailscale stopped on the client:
+
+```
+route to 100.119.204.101  ->  gateway 192.168.2.1, interface en0
+GET http://100.119.204.101:8099/...  ->  HTTP 200      # from a LAN host
+```
+
+So the source address is restricted as well, and the pair is what makes it
+tailnet-only:
+
+```
+ip saddr 100.64.0.0/10 tcp dport 8099 accept   "Allow-autorate-toggle-tailnet"
+                       tcp dport 8099 drop     "Block-autorate-toggle-elsewhere"
+```
+
+After which the same LAN request gets nothing and the drop counter increments.
+
+There is deliberately no token or password. Authentication is tailnet
+membership, and the honest tradeoff is that any device on your tailnet can
+toggle the shaper. That is acceptable for something this low stakes and
+self-correcting. Do not extend the endpoint to anything that is not.
+
+A cron entry re-runs the binder every five minutes because the Tailscale
+address can change; it exits immediately when nothing has moved. If Tailscale
+is down there is no address to bind and the listener simply does not come up,
+which is the failure direction you want.
+
 ## What it actually costs, measured
 
 Measured on a Mudi 7 at ~47 Mbps down / 46 up, from a LAN client so the traffic crossed the router's forwarding path.
