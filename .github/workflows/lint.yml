@@ -1,0 +1,36 @@
+name: lint
+
+# There is no way to test this project without GL hardware, so CI covers the
+# one class of bug that is catchable without it: shell that is wrong for the
+# interpreter it will actually run under. The checks live in ci/lint.sh so the
+# same code runs locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install checkers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck lua5.3
+
+      - name: Versions
+        run: |
+          shellcheck --version | grep version
+          luac5.3 -v || true
+
+      - name: Run checks
+        run: |
+          # the script looks for luac; Debian names it luac5.3
+          if ! command -v luac >/dev/null && command -v luac5.3 >/dev/null; then
+            sudo ln -sf "$(command -v luac5.3)" /usr/local/bin/luac
+          fi
+          ./ci/lint.sh
