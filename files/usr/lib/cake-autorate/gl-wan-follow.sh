@@ -10,11 +10,11 @@
 
 log() { logger -t cake-wan-follow "$1"; }
 
-[ "$(uci -q get ${CONF}.${SECTION}.wan_follow)" = "1" ] || exit 0
-[ "$(uci -q get ${CONF}.${SECTION}.enabled)"    = "1" ] || exit 0
+[ "$(uci -q get "${CONF}.${SECTION}.wan_follow")" = "1" ] || exit 0
+[ "$(uci -q get "${CONF}.${SECTION}.enabled")"    = "1" ] || exit 0
 
 exec 9>"$LOCK_FILE"
-take_lock 60 || exit 0
+take_lock 60 || { log "timed out waiting for the lock"; exit 0; }
 
 dev="$(wan_dev)"
 if [ -z "$dev" ]; then
@@ -28,8 +28,8 @@ fi
 target="$(shape_target "$dev")"
 resolve_shaping "$dev" "$target"
 
-prev_wan="$(uci -q get ${CONF}.${SECTION}.active_wan)"
-prev_ul="$(uci -q get ${CONF}.${SECTION}.ul_if)"
+prev_wan="$(uci -q get "${CONF}.${SECTION}.active_wan")"
+prev_ul="$(uci -q get "${CONF}.${SECTION}.ul_if")"
 sqm_if="$(uci -q get sqm.autorate.interface)"
 
 sqm_ok=1
@@ -65,11 +65,18 @@ if [ "$dev" != "$prev_wan" ] || [ "$CA_UL_IF" != "$prev_ul" ]; then
 
 	# Bounds measured on this uplink previously. Keyed on the uplink, not the
 	# shaped device, because capacity is a property of the link.
-	if [ "$(uci -q get ${CONF}.${SECTION}.auto_tune)" = "1" ]; then
+	if [ "$(uci -q get "${CONF}.${SECTION}.auto_tune")" = "1" ]; then
 		key="$(mem_key "$dev")"
 		for d in dl ul; do
-			p="$(uci -q get ${CONF}.${key}_${d})"
-			[ -n "$p" ] || continue
+			p="$(uci -q get "${CONF}.${key}_${d}")"
+			# Validate BEFORE the arithmetic, not inside set_bounds: busybox
+			# ash silently evaluates a non-numeric value to 0, which then
+			# passes set_bounds' own check and clamps the ceiling to the floor,
+			# pinning a 200Mbit link at 2Mbit. Other junk aborts the $(( ))
+			# outright. Either way the guard has to be on this side.
+			case "$p" in
+				''|*[!0-9]*) continue ;;
+			esac
 			set_bounds "$d" $(( p * 120 / 100 ))
 			log "restored ${d} bounds for ${dev} from observed peak ${p}k"
 		done
