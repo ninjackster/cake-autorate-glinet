@@ -47,6 +47,14 @@ off)
 	fi
 	echo "off"
 	;;
+toggle)
+	# Single entry point for anything that has one button to spend.
+	if [ "$(uci -q get ${CONF}.${SECTION}.enabled)" = "1" ]; then
+		"$0" off
+	else
+		"$0" on
+	fi
+	;;
 status)
 	dev="$(uci -q get ${CONF}.${SECTION}.active_wan)"
 	dl="$(uci -q get ${CONF}.${SECTION}.dl_if)"
@@ -60,5 +68,5 @@ status)
 	[ -n "$ul" ] && echo "upload:    $(tc qdisc show dev "$ul" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1)"
 	;;
 *)
-	echo "usage: $0 {on|off|status}"; exit 1 ;;
+	echo "usage: $0 {on|off|toggle|status}"; exit 1 ;;
 esac

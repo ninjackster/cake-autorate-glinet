@@ -387,6 +387,27 @@ uci commit switch-button
 `install.sh` does this automatically, but only when the switch is unassigned.
 If you have already bound it to something, it says so and leaves it alone.
 
+**Not every GL device has a switch, including the one this was written on.** The
+Mudi 7 has a touchscreen, a power key, a reset button and two SAR sensors, and
+that is all:
+
+```
+input devices:  chsc_cap_touch, pmic_pwrkey, pmic_resin, aw_sar0_ch0d/ch1d
+hw-info:        reset-button = gpio-91     (no "switch" entry)
+```
+
+`/etc/rc.button/switch` and `/etc/gl-switch.d/` still exist there because GL
+ships one rootfs across models, so the handler installs cleanly and simply never
+fires. Check before relying on it:
+
+```sh
+cat /proc/bus/input/devices | grep '^N: Name'
+logread | grep -c gl-switch          # 0 means it has never fired
+```
+
+For a device with no switch, `gl-autorate-ctl.sh toggle` is the single entry
+point to bind to whatever you do have.
+
 On the screen, `rc.button/switch` calls `screen_disp_switch`, which maps known
 `func` values to a label and falls through to "Toggle Button" for anything else.
 The underlying call is undocumented but simple:
