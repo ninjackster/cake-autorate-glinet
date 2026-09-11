@@ -17,10 +17,17 @@ say() { echo "  $*"; }
 # --- Refuse to clobber a vendor build -------------------------------------
 # If GL ships cake-autorate for this model, theirs is the one to use. Ours
 # would overwrite their init script and launcher with patched copies.
-if [ -f /usr/lib/cake-autorate/cake-autorate.sh ] && \
-   [ ! -f /usr/lib/cake-autorate/gl-wan-follow.sh ]; then
-	echo "A cake-autorate install is already present that this port did not create."
-	echo "It is probably GL's own. Use theirs, or remove it first. Nothing changed."
+# Keying this off "does gl-wan-follow.sh exist" was wrong: after a firmware
+# upgrade that ships GL's own cake-autorate, sysupgrade.conf restores our files,
+# so it exists, the guard passes, and we overwrite GL's launcher and init script
+# with patched copies. Key off provenance instead. Every file this port vendors
+# carries an "Origin: GL.iNet firmware" header; GL's own shipped copies do not.
+if [ -f /etc/init.d/cake-autorate ] && \
+   ! grep -q 'Origin: GL.iNet firmware' /etc/init.d/cake-autorate 2>/dev/null; then
+	echo "/etc/init.d/cake-autorate exists but was not installed by this port."
+	echo "That almost certainly means GL now ships cake-autorate for this model."
+	echo "Theirs is the one to use. Run UNINSTALL.sh first if you want ours."
+	echo "Nothing changed."
 	exit 1
 fi
 if bash --version 2>/dev/null | head -1 | grep -qE 'version [5-9]\.'; then

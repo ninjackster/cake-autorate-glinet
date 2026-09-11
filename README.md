@@ -536,6 +536,14 @@ Cake's own queue was empty while the link showed a second of delay. A shaper can
 
 ## Things worth knowing before you commit
 
+**When GL ships cake-autorate for your model, remove this first.** The
+`/etc/sysupgrade.conf` entries that make the port survive an upgrade will also
+restore its patched `launcher.sh` and `init.d` over GL's own, which is the last
+thing you want once theirs exists. `install.sh` refuses to run in that case (it
+checks for the "Origin: GL.iNet firmware" provenance header this port stamps on
+every file it vendors), but a plain firmware upgrade does not consult it. Run
+`UNINSTALL.sh` before upgrading to a firmware that includes the feature.
+
 A firmware flash erases all of it. None of this is a package, so nothing survives sysupgrade and nothing will conflict with GL's own build when they eventually ship it. Re-run the port, or delete it and use theirs.
 
 Autorate earns nothing on a stable link. It exists for uplinks whose real capacity moves underneath you: cellular, repeatered hotel and rental wifi, satellite, congested cable at peak. On a steady fiber connection a fixed cake rate is better and cheaper. GL's own UI says the same thing.
