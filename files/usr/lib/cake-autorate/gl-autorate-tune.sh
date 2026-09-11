@@ -70,8 +70,12 @@ for dir in dl ul; do
 		changed=1
 	fi
 
-	cur_max="$(uci -q get ${CONF}.${SECTION}.max_${dir}_shaper_rate_kbps)"
-	[ -n "$cur_max" ] || continue
+	cur_max="$(uci -q get "${CONF}.${SECTION}.max_${dir}_shaper_rate_kbps")"
+	# ash turns a non-numeric value into 0 inside $(( )), which would drive
+	# new_max to 0 and collapse the ceiling to the floor with nothing logged.
+	case "$cur_max" in
+		''|*[!0-9]*) continue ;;
+	esac
 
 	if [ "$peak" -ge "$(pct "$cur_max" 98)" ]; then
 		new_max="$(pct "$cur_max" "$STEP_UP")"

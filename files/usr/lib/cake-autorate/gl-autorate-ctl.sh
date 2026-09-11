@@ -10,7 +10,9 @@
 
 do_on() {
 	dev="$(wan_dev)"
-	[ -n "$dev" ] || { echo "no usable WAN (no default route)"; exit 1; }
+	# return, not exit: do_toggle calls this, and an exit here would kill the
+	# whole script so the toggle printed nothing at all.
+	[ -n "$dev" ] || { echo "no usable WAN (no default route)"; return 1; }
 	target="$(shape_target "$dev")"
 	resolve_shaping "$dev" "$target"
 
@@ -27,15 +29,19 @@ do_on() {
 	uci -q commit ${CONF}
 
 	write_sqm
-	/etc/init.d/sqm restart >/dev/null 2>&1
-	/etc/init.d/cake-autorate enable >/dev/null 2>&1
+	# Only bounce sqm when its config moved or the qdisc is gone; restarting it
+	# rebuilds the qdisc and interrupts traffic. 9>&- on every service call:
+	# this function runs holding the lock on fd 9, and a daemon that inherits
+	# it would hold the lock forever and permanently block the follower.
+	[ "$SQM_CHANGED" = "1" ] && /etc/init.d/sqm restart >/dev/null 2>&1 9>&-
+	/etc/init.d/cake-autorate enable >/dev/null 2>&1 9>&-
 	restart_autorate
 	echo "on: uplink ${dev}, shaping ${SHAPE_IF} (${target} mode)"
 }
 
 do_off() {
-	/etc/init.d/cake-autorate stop >/dev/null 2>&1
-	/etc/init.d/cake-autorate disable >/dev/null 2>&1
+	/etc/init.d/cake-autorate stop >/dev/null 2>&1 9>&-
+	/etc/init.d/cake-autorate disable >/dev/null 2>&1 9>&-
 	uci -q set ${CONF}.${SECTION}.enabled=0
 	uci -q commit ${CONF}
 	# Deleting the section is not enough: sqm-scripts leaves the qdisc and the
@@ -43,7 +49,7 @@ do_off() {
 	if [ "$(uci -q get sqm.autorate)" = "queue" ]; then
 		uci -q delete sqm.autorate
 		uci -q commit sqm
-		/etc/init.d/sqm restart >/dev/null 2>&1
+		/etc/init.d/sqm restart >/dev/null 2>&1 9>&-
 	fi
 	echo "off"
 }
@@ -56,7 +62,10 @@ do_toggle() {
 		do_off >/dev/null 2>&1
 		echo "Autorate OFF"
 	else
-		do_on >/dev/null 2>&1
+		if ! do_on >/dev/null 2>&1; then
+			echo "Autorate could not start: no usable WAN"
+			return 1
+		fi
 		# the shaper needs a moment to come up before it can be reported
 		i=0
 		while [ "$i" -lt 10 ]; do
@@ -103,7 +112,7 @@ case "$1" in
 esac
 
 case "$1" in
-	on)     do_on ;;
+	on)     do_on || exit 1 ;;
 	off)    do_off ;;
 	toggle) do_toggle ;;
 	status) do_status ;;       # read-only, no lock needed

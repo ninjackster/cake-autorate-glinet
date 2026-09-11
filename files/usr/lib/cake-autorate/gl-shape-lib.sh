@@ -49,7 +49,7 @@ lan_dev() {
 #             what GL's own stock SQM config uses on this hardware.
 shape_target() {
 	local dev="$1" mode
-	mode="$(uci -q get ${CONF}.${SECTION}.shape_mode)"
+	mode="$(uci -q get "${CONF}.${SECTION}.shape_mode")"
 	[ -n "$mode" ] || mode=auto
 	case "$mode" in
 		bridge) printf 'bridge' ;;
@@ -89,8 +89,8 @@ resolve_shaping() {
 # Write sqm.autorate for the resolved target, honouring the inversion.
 write_sqm() {
 	local base_dl base_ul dl_rate ul_rate
-	base_dl="$(uci -q get ${CONF}.${SECTION}.base_dl_shaper_rate_kbps)"
-	base_ul="$(uci -q get ${CONF}.${SECTION}.base_ul_shaper_rate_kbps)"
+	base_dl="$(uci -q get "${CONF}.${SECTION}.base_dl_shaper_rate_kbps")"
+	base_ul="$(uci -q get "${CONF}.${SECTION}.base_ul_shaper_rate_kbps")"
 	# Not `[ x ] && a || b`: that is not if/else, and b also runs when a fails.
 	if [ "$SQM_DOWNLOAD_IS" = "dl" ]; then dl_rate="$base_dl"; else dl_rate="$base_ul"; fi
 	if [ "$SQM_UPLOAD_IS"   = "ul" ]; then ul_rate="$base_ul"; else ul_rate="$base_dl"; fi
@@ -150,9 +150,12 @@ take_lock() {
 # exits at startup. Every path that lowers min_ul has to call this.
 clamp_active_thr() {
 	local ulmin thr
-	ulmin="$(uci -q get ${CONF}.${SECTION}.min_ul_shaper_rate_kbps)"
-	thr="$(uci -q get ${CONF}.${SECTION}.connection_active_thr_kbps)"
-	[ -n "$ulmin" ] && [ -n "$thr" ] || return 0
+	ulmin="$(uci -q get "${CONF}.${SECTION}.min_ul_shaper_rate_kbps")"
+	thr="$(uci -q get "${CONF}.${SECTION}.connection_active_thr_kbps")"
+	# A non-numeric value makes the -le test fail outright, and $(( )) would
+	# silently yield 0, setting the threshold to zero.
+	case "$ulmin" in ''|*[!0-9]*) return 0 ;; esac
+	case "$thr"   in ''|*[!0-9]*) return 0 ;; esac
 	[ "$thr" -le "$ulmin" ] && return 0
 	uci -q set ${CONF}.${SECTION}.connection_active_thr_kbps=$(( ulmin / 2 ))
 }
