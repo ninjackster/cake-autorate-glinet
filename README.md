@@ -84,6 +84,51 @@ lib.sh sleep idiom        elapsed_us=200371     (0.37ms overhead on a 200ms slee
 
 That last line matters more than it looks. cake-autorate's timing loop is the algorithm, so a slow clock source would defeat the point. 0.37ms of overhead is fine.
 
+## Getting the four vendor files out of a firmware image
+
+You need four things from a GL 4.11 image: `bash` 5.1.4, and the three stock
+cake-autorate scripts. `extract-upstream.sh` does it:
+
+```sh
+./extract-upstream.sh ~/Downloads/mt6000-4.11.0_beta1-*.bin
+```
+
+```
+  image: mt6000-4.11.0_beta1-1112-0904-1788511909.bin (82907100 bytes)
+  rootfs: 79085568 bytes
+  extracting four files
+
+  bash            5.1.4  (983131 bytes)
+  cake-autorate   3.3.0-PRERELEASE
+
+  sha256:
+    33c6703b19c0dd046a529e890ccb5242312007a8a78b1c50a94ad65c589d3e5e  bash5
+    10c6a8ff20ca583aece8baf5cf6294f53b2b0315a4a0acb3b92ee106deadab81  cake-autorate.sh
+    a61dd843667ec8e3b859b1bbb8d5421270d0157f540b86d8b9f4b769a0352ead  defaults.sh
+    ea60741700f270854f230bc7b0611dadd551f322901e2eda4d79861e5b46b77a  lib.sh
+```
+
+It runs on your workstation, not the router, because it needs `unsquashfs`
+(`brew install squashfs`, or `apt install squashfs-tools`). You are not
+flashing the image and nothing is downloaded for you: supply an image you
+obtained yourself and four files land in `upstream/`, which is where
+`install.sh` looks.
+
+It checks what it pulls out rather than trusting the image: aarch64, linked
+against musl, actually has `EPOCHREALTIME`, bash 5.x, and a real cake-autorate
+version string. It refuses and writes nothing if any of that fails, so pointing
+it at a 4.10 image gets you one clear line rather than a broken install.
+
+Two details it handles that cost me time doing this by hand. It extracts only
+those four paths, because a full `unsquashfs` aborts partway on a
+case-insensitive filesystem: the kernel modules contain both `xt_dscp.ko` and
+`xt_DSCP.ko`, and macOS cannot hold both, which leaves empty files behind that
+look extracted. And the bash version is parsed out of the banner string
+`@(#)Bash version 5.1.4(1) release GNU`, not the `-release` form you would
+expect from `bash --version`.
+
+If you would rather do it by hand, the next section is the manual route.
+
 ## Install bash side by side, not over the top
 
 GL replaces `/bin/bash` outright. Do not copy that. On the MT6000 every GL script was built and tested against 5.1.4. On your model they were built against 3.2, and that is a fourteen year gap in shell behavior introduced underneath vendor code you cannot see, including whatever watchdogs and helpers your firmware runs.
