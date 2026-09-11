@@ -490,7 +490,17 @@ The same shape bit the listener options: gating the whole uhttpd section on
 reconciled field by field on every run, and both are idempotent.
 
 A cron entry re-runs the binder every five minutes because the Tailscale
-address can change; it exits immediately when nothing has moved. If Tailscale
+address can change; it exits immediately when nothing has moved.
+
+Two behaviours worth knowing about the follower, both deliberate. It exits
+early in steady state, so editing a base rate by hand does not reach `sqm`
+until something else changes; the LuCI page and `gl-autorate-ctl.sh on` both
+call `write_sqm` directly, and `sqm`'s own download/upload are only the
+starting rates anyway, since cake-autorate owns the live value from then on.
+And it restarts `sqm` only when that config actually moved or the qdisc is
+missing. Restarting unconditionally meant a service stuck failing to start
+tore down and rebuilt the qdisc every minute, interrupting traffic each time.
+Measured before the fix: the qdisc byte counter reset on every run. If Tailscale
 is down there is no address to bind and the listener simply does not come up,
 which is the failure direction you want.
 

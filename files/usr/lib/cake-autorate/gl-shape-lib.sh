@@ -95,16 +95,32 @@ write_sqm() {
 	if [ "$SQM_DOWNLOAD_IS" = "dl" ]; then dl_rate="$base_dl"; else dl_rate="$base_ul"; fi
 	if [ "$SQM_UPLOAD_IS"   = "ul" ]; then ul_rate="$base_ul"; else ul_rate="$base_dl"; fi
 
-	uci -q set sqm.autorate=queue
-	uci -q set sqm.autorate.interface="$SHAPE_IF"
-	uci -q set sqm.autorate.enabled=1
-	uci -q set sqm.autorate.qdisc=cake
-	uci -q set sqm.autorate.script=piece_of_cake.qos
-	uci -q set sqm.autorate.qdisc_advanced=0
-	uci -q set sqm.autorate.linklayer=none
-	uci -q set sqm.autorate.download="$dl_rate"
-	uci -q set sqm.autorate.upload="$ul_rate"
-	uci -q commit sqm
+	# Report whether anything actually changed, so the caller can avoid
+	# restarting sqm when it does not need to. Restarting sqm tears down and
+	# rebuilds the qdisc, which interrupts traffic; doing that unconditionally
+	# meant a service stuck in a restart loop disrupted the link every minute.
+	SQM_CHANGED=0
+	sqm_set() {
+		[ "$(uci -q get sqm.autorate.$1)" = "$2" ] && return 0
+		uci -q set sqm.autorate.$1="$2"
+		SQM_CHANGED=1
+	}
+
+	[ "$(uci -q get sqm.autorate)" = "queue" ] || { uci -q set sqm.autorate=queue; SQM_CHANGED=1; }
+	sqm_set interface "$SHAPE_IF"
+	sqm_set enabled 1
+	sqm_set qdisc cake
+	sqm_set script piece_of_cake.qos
+	sqm_set qdisc_advanced 0
+	sqm_set linklayer none
+	sqm_set download "$dl_rate"
+	sqm_set upload "$ul_rate"
+	[ "$SQM_CHANGED" = "1" ] && uci -q commit sqm
+
+	# A config that matches but a missing qdisc still needs a restart: sqm may
+	# have been stopped from elsewhere, and cake-autorate cannot drive a qdisc
+	# that is not there.
+	tc qdisc show dev "$SHAPE_IF" 2>/dev/null | grep -q ' cake ' || SQM_CHANGED=1
 }
 
 # Both the follower and the tuner write these bounds. They used to derive them

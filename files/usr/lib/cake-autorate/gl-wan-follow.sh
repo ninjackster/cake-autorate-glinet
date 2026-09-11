@@ -80,6 +80,8 @@ fi
 
 # cake-autorate adjusts an existing cake qdisc; it never creates one.
 write_sqm
-/etc/init.d/sqm restart >/dev/null 2>&1 9>&-
+# Only bounce sqm when its config moved or the qdisc is missing. cake-autorate
+# is cheap to restart and is the actual recovery path.
+[ "$SQM_CHANGED" = "1" ] && /etc/init.d/sqm restart >/dev/null 2>&1 9>&-
 restart_autorate
 log "now shaping ${SHAPE_IF} for uplink ${dev}"
