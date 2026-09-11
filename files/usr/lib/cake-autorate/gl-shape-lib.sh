@@ -91,8 +91,9 @@ write_sqm() {
 	local base_dl base_ul dl_rate ul_rate
 	base_dl="$(uci -q get ${CONF}.${SECTION}.base_dl_shaper_rate_kbps)"
 	base_ul="$(uci -q get ${CONF}.${SECTION}.base_ul_shaper_rate_kbps)"
-	[ "$SQM_DOWNLOAD_IS" = "dl" ] && dl_rate="$base_dl" || dl_rate="$base_ul"
-	[ "$SQM_UPLOAD_IS"   = "ul" ] && ul_rate="$base_ul" || ul_rate="$base_dl"
+	# Not `[ x ] && a || b`: that is not if/else, and b also runs when a fails.
+	if [ "$SQM_DOWNLOAD_IS" = "dl" ]; then dl_rate="$base_dl"; else dl_rate="$base_ul"; fi
+	if [ "$SQM_UPLOAD_IS"   = "ul" ]; then ul_rate="$base_ul"; else ul_rate="$base_dl"; fi
 
 	uci -q set sqm.autorate=queue
 	uci -q set sqm.autorate.interface="$SHAPE_IF"
@@ -145,7 +146,11 @@ clamp_active_thr() {
 # a low ceiling used to produce min > base.
 set_bounds() {
 	local dir="$1" mx="$2" base mn
-	[ -n "$mx" ] || return 1
+	# Must be an integer: a hand-edited UCI value would otherwise make the
+	# comparisons below error out rather than clamp.
+	case "$mx" in
+		''|*[!0-9]*) return 1 ;;
+	esac
 	[ "$mx" -gt "$CEILING_KBPS" ] && mx="$CEILING_KBPS"
 	[ "$mx" -lt "$FLOOR_KBPS" ]   && mx="$FLOOR_KBPS"
 	base=$(( mx * 85 / 100 ))

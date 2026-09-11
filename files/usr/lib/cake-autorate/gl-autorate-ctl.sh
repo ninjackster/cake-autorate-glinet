@@ -8,8 +8,7 @@
 
 . /usr/lib/cake-autorate/gl-shape-lib.sh
 
-case "$1" in
-on)
+do_on() {
 	dev="$(wan_dev)"
 	[ -n "$dev" ] || { echo "no usable WAN (no default route)"; exit 1; }
 	target="$(shape_target "$dev")"
@@ -32,8 +31,9 @@ on)
 	/etc/init.d/cake-autorate enable >/dev/null 2>&1
 	/etc/init.d/cake-autorate restart >/dev/null 2>&1
 	echo "on: uplink ${dev}, shaping ${SHAPE_IF} (${target} mode)"
-	;;
-off)
+}
+
+do_off() {
 	/etc/init.d/cake-autorate stop >/dev/null 2>&1
 	/etc/init.d/cake-autorate disable >/dev/null 2>&1
 	uci -q set ${CONF}.${SECTION}.enabled=0
@@ -46,16 +46,17 @@ off)
 		/etc/init.d/sqm restart >/dev/null 2>&1
 	fi
 	echo "off"
-	;;
-toggle)
+}
+
+do_toggle() {
 	# Single entry point for anything that has one button to spend. Prints one
 	# human-readable line, so a caller with a notification to fill needs no
 	# second round trip and no parsing.
 	if [ "$(uci -q get ${CONF}.${SECTION}.enabled)" = "1" ]; then
-		"$0" off >/dev/null 2>&1
+		do_off >/dev/null 2>&1
 		echo "Autorate OFF"
 	else
-		"$0" on >/dev/null 2>&1
+		do_on >/dev/null 2>&1
 		# the shaper needs a moment to come up before it can be reported
 		i=0
 		while [ "$i" -lt 10 ]; do
@@ -74,8 +75,9 @@ toggle)
 			echo "Autorate failed to start on ${dev:-?}"
 		fi
 	fi
-	;;
-status)
+}
+
+do_status() {
 	dev="$(uci -q get ${CONF}.${SECTION}.active_wan)"
 	dl="$(uci -q get ${CONF}.${SECTION}.dl_if)"
 	ul="$(uci -q get ${CONF}.${SECTION}.ul_if)"
@@ -86,7 +88,24 @@ status)
 	echo "running:   $(/etc/init.d/cake-autorate running 2>/dev/null && echo yes || echo no)"
 	[ -n "$dl" ] && echo "download:  $(tc qdisc show dev "$dl" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1)"
 	[ -n "$ul" ] && echo "upload:    $(tc qdisc show dev "$ul" 2>/dev/null | grep -o 'bandwidth [0-9A-Za-z]*' | head -1)"
-	;;
-*)
-	echo "usage: $0 {on|off|toggle|status}"; exit 1 ;;
+}
+
+# Entry point owns the lock. The follower and the tuner write the same UCI
+# config and restart the same service, and this is reachable from an HTTP
+# endpoint, a button handler and ssh, so an unlocked write here is a real
+# lost-update race. The work functions above assume the lock is already held
+# and never re-exec, which is what keeps toggle from deadlocking on itself.
+case "$1" in
+	on|off|toggle)
+		exec 9>"$LOCK_FILE"
+		take_lock 60 || { echo "busy: another change is in progress"; exit 1; }
+		;;
+esac
+
+case "$1" in
+	on)     do_on ;;
+	off)    do_off ;;
+	toggle) do_toggle ;;
+	status) do_status ;;       # read-only, no lock needed
+	*)      echo "usage: $0 {on|off|toggle|status}"; exit 1 ;;
 esac
