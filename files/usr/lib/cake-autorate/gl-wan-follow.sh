@@ -48,12 +48,24 @@ fi
 # A modem renumbers itself (rmnet_data0 <-> rmnet_data1) without the link
 # changing. In bridge mode the shaped device is br-lan either way, so record
 # the new name for the tuner's memory key but do not tear the shaper down.
-if [ "$dev" != "$prev_wan" ] && [ "$CA_UL_IF" = "$prev_ul" ] && [ "$sqm_ok" = "1" ] \
-   && /etc/init.d/cake-autorate running 2>/dev/null 9>&-
+#
+# The service is usually NOT running when this fires. The bearer move takes the
+# default route away for ~10s, the previous cycle's "no default route" branch
+# stops the service, and the rename is what brings the route back. Requiring it
+# to be running here meant the guard never fired on the one sequence it was
+# written for, so every rename fell through to a bounds rewrite and an sqm
+# restart. That rebuilds the cake qdisc and flushes the queue, which is a
+# visible drop on a video call. Restart the service if it is down; leave the
+# qdisc and the bounds alone. Only skip the rebuild when there is a live qdisc
+# to keep -- if it is missing, the full path below is the correct recovery.
+if [ "$(uplink_id "$dev")" = "$(uplink_id "$prev_wan")" ] && [ "$dev" != "$prev_wan" ] \
+   && [ "$CA_UL_IF" = "$prev_ul" ] && [ "$sqm_ok" = "1" ] \
+   && tc qdisc show dev "$SHAPE_IF" 2>/dev/null | grep -q ' cake '
 then
 	uci -q set ${CONF}.${SECTION}.active_wan="$dev"
 	uci -q commit ${CONF}
 	log "uplink renamed ${prev_wan} -> ${dev}; shaping ${SHAPE_IF} unchanged"
+	/etc/init.d/cake-autorate running 2>/dev/null 9>&- || restart_autorate
 	exit 0
 fi
 

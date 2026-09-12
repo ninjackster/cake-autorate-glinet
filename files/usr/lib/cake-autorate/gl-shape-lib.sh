@@ -184,6 +184,20 @@ set_bounds() {
 	uci -q set ${CONF}.${SECTION}.min_${dir}_shaper_rate_kbps="$mn"
 }
 
+# Identity of an uplink for change detection. A Qualcomm modem moves its bearer
+# between rmnet_data0 and rmnet_data1 without the link itself changing: same
+# gateway, same address, same capacity. shape_target() sends every modem to
+# bridge mode and mem_key() collapses them to one bounds memory, so the two
+# names are interchangeable everywhere that matters. Comparing on this rather
+# than the raw device name keeps a rename from being read as a new WAN.
+uplink_id() {
+	if is_modem "$1"; then
+		printf 'modem'
+		return 0
+	fi
+	printf '%s' "$1"
+}
+
 # Memory key for an uplink. A modem renumbers itself between rmnet_data0 and
 # rmnet_data1 with no change to the physical link, which would otherwise split
 # what it has learned across two keys and lose it on every rename. Bridge mode
