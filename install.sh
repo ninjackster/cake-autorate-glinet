@@ -134,11 +134,25 @@ if [ ! -f /etc/config/cake-autorate ]; then
 		set cake-autorate.wan.reflector_ping_interval_s=0.3
 		set cake-autorate.wan.dl_owd_delta_delay_thr_ms=30.0
 		set cake-autorate.wan.ul_owd_delta_delay_thr_ms=30.0
+		set cake-autorate.wan.output_load_stats=1
 		commit cake-autorate
 	UCI
 	say "seeded default config"
 else
 	say "existing config kept (enabled=$(uci -q get cake-autorate.wan.enabled))"
+fi
+
+# --- migration: the tuner needs cake-autorate's LOAD lines ------------------
+# gl-autorate-tune.sh reads achieved throughput from the LOAD lines, which are
+# only emitted when output_load_stats is on. Without it peak_for() returns
+# nothing and auto-tune silently does nothing at all. The config above is
+# deliberately preserved across upgrades, so seeding it there does not reach an
+# existing install. Add it when it is absent, and leave an explicit 0 alone in
+# case someone turned it off on purpose.
+if [ -f /etc/config/cake-autorate ] && [ -z "$(uci -q get cake-autorate.wan.output_load_stats)" ]; then
+	uci -q set cake-autorate.wan.output_load_stats=1
+	uci -q commit cake-autorate
+	say "enabled output_load_stats (required by the tuner)"
 fi
 
 # --- cron safety net (hotplug cannot see a modem with no netifd interface) --
